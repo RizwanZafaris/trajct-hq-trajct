@@ -15,8 +15,10 @@
     "@trajct/contracts": "workspace:*",
     "@trajct/db": "workspace:*",
     "@trajct/core": "workspace:*",
+    "@trajct/ai": "workspace:*",
     "bullmq": "^5.12.0",
     "ioredis": "^5.4.1",
+    "postgres": "^3.4.9",
     "zod": "^3.23.0"
   },
   "devDependencies": {

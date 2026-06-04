@@ -7,7 +7,7 @@
  * FAIL-CLOSED: if Redis is unavailable, throws — never spends blind.
  */
 
-import IORedis from "ioredis";
+import { Redis } from "ioredis";
 import {
   atomicCapReserve,
   commitCapSpend,
@@ -36,10 +36,10 @@ const FREE_CAP_CENTS  = parseInt(process.env["CAP_FREE_TIER_MONTHLY_CENTS"]  ?? 
 const PAID_CAP_CENTS  = parseInt(process.env["CAP_PAID_TIER_MONTHLY_CENTS"]  ?? "5000",   10);
 const GLOBAL_CAP_CENTS = parseInt(process.env["CAP_GLOBAL_MONTHLY_CENTS"]    ?? "100000", 10);
 
-let _redis: IORedis | null = null;
-function getRedis(): IORedis {
+let _redis: Redis | null = null;
+function getRedis(): Redis {
   if (!_redis) {
-    _redis = new IORedis(process.env["REDIS_URL"] ?? "redis://localhost:6379", {
+    _redis = new Redis(process.env["REDIS_URL"] ?? "redis://localhost:6379", {
       maxRetriesPerRequest: 2, connectTimeout: 3000,
     });
   }

@@ -1,0 +1,12 @@
+{
+  "extends": "@trajct/config/tsconfig",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "baseUrl": "."
+  },
+  "include": ["billing/**/*.ts", "engine/**/*.ts", "screening/**/*.ts", "compliance/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
