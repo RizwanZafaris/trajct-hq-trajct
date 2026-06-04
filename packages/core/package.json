@@ -1,0 +1,16 @@
+{
+  "name": "@trajct/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./billing": "./billing/index.ts",
+    "./engine": "./engine/index.ts",
+    "./screening": "./screening/index.ts",
+    "./compliance": "./compliance/index.ts"
+  },
+  "devDependencies": {
+    "@trajct/config": "workspace:*",
+    "typescript": "^5.6.0"
+  }
+}

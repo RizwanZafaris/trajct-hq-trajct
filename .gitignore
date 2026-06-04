@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+out/
+
+# Environment files — NEVER commit real secrets
+.env
+.env.local
+.env.*.local
+# .env.example is committed (template only)
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# OS artifacts
+.DS_Store
+._*
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Generated
+docs/api/*.json
+
+# Terraform
+infra/terraform/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+# terraform.tfvars.example is committed

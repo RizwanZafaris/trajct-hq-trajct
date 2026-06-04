@@ -1,0 +1,19 @@
+# CODEOWNERS — Trajct
+# These paths require human review from hire #1 onward (Technical-Methodology §1.3).
+# Until then, founder acts as owner for all paths.
+# CI enforces: no merge to main on these paths without CODEOWNERS approval.
+
+# Billing, spend cap, metering — financial integrity
+packages/core/billing/     @trajct/platform-eng
+
+# Screening — compliance/legal gate
+packages/core/screening/   @trajct/platform-eng @trajct/compliance
+
+# Compliance & decision logging — regulatory backbone
+packages/core/compliance/  @trajct/platform-eng @trajct/compliance
+
+# Database schema + migrations + RLS policies — data integrity
+packages/db/               @trajct/platform-eng
+
+# AI gateway — cost governance
+packages/ai/               @trajct/platform-eng

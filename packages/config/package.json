@@ -1,0 +1,11 @@
+{
+  "name": "@trajct/config",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./tsconfig": "./tsconfig.base.json",
+    "./tsconfig/nextjs": "./tsconfig.nextjs.json",
+    "./tsconfig/nestjs": "./tsconfig.nestjs.json",
+    "./eslint": "./eslint.config.mjs"
+  }
+}

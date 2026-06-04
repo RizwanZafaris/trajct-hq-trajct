@@ -1,0 +1,28 @@
+{
+  "name": "@trajct/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./gateway": "./src/gateway.ts",
+    "./cap": "./src/cap.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@trajct/contracts": "workspace:*",
+    "ioredis": "^5.4.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@trajct/config": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0"
+  }
+}

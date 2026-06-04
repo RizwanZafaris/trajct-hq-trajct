@@ -1,0 +1,30 @@
+{
+  "name": "trajct",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@11.5.1",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:e2e": "turbo test:e2e",
+    "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + 2>/dev/null; find . -name '.next' -type d -prune -exec rm -rf '{}' + 2>/dev/null; find . -name 'dist' -type d -prune -exec rm -rf '{}' + 2>/dev/null; echo 'cleaned'",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:migrate": "turbo db:migrate --filter=@trajct/db",
+    "db:studio": "turbo db:studio --filter=@trajct/db",
+    "contracts:build": "turbo contracts:build --filter=@trajct/contracts",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "@trajct/config": "workspace:*",
+    "turbo": "^2.0.0",
+    "prettier": "^3.3.0"
+  }
+}
