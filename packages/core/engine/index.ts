@@ -42,6 +42,10 @@ export { voiceExtract, voiceInject, getVoiceProfile } from "./voice.js";
 export type { DiscoveredJob, DiscoveryQuery, JobDiscoveryAdapter } from "./discovery/index.js";
 export { runDiscovery, persistDiscoveredJobs } from "./discovery/index.js";
 
+// --- SSRF-safe fetch (R6) — used by research/discovery; shared with Sprint B fetchers
+export type { SafeFetchResult, SafeFetchOptions } from "./safe-fetch.js";
+export { safeFetch, isPrivateIp, SSRFBlockedError } from "./safe-fetch.js";
+
 // --- F-059 legitimacy filter ----------------------------------------------
 export type { LegitimacyResult, LegitimacyTier, LegitimacyInput, LegitimacyDeps } from "./legitimacy.js";
 export {
