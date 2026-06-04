@@ -1,11 +1,27 @@
 /**
  * @trajct/contracts — single source of truth for all API schemas.
- *
  * Rule: NO endpoint exists without a contract here first.
- * Zod schemas drive: (1) runtime validation, (2) TypeScript types, (3) generated OpenAPI 3.1.
  */
 
+// Platform
 export * from "./auth.js";
 export * from "./org.js";
-export * from "./diagnostic.js";
 export * from "./errors.js";
+
+// F-001 Diagnostic
+export * from "./diagnostic.js";
+
+// Candidate
+export * from "./candidate/resume.js";
+export * from "./candidate/profile.js";
+export * from "./candidate/prep.js";
+export * from "./candidate/tracker.js";
+export * from "./candidate/monitoring.js";
+
+// Employer
+export * from "./employer/jd.js";
+export * from "./employer/matching.js";
+export * from "./employer/pipeline.js";
+
+// Engine
+export * from "./engine/persona.js";
