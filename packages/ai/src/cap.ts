@@ -6,9 +6,16 @@
  *
  * Pattern: reserve → (work) → commit OR release
  * The Lua script ensures atomicity: concurrent calls near the cap can't race past it (TC-077.4).
+ *
+ * Cap counters per key:
+ *   cap:account:<accountId>  → {ceiling, committed, reserved, res:<reservationId>}
+ *   cap:global               → {ceiling, committed, reserved, res:<reservationId>}
+ *
+ * These keys use AOF persistence (appendonly yes in docker-compose).
+ * Reconcile against Postgres usage_events hourly (cron job — F-076).
  */
 
-import IORedis from "ioredis";
+import type IORedis from "ioredis";
 
 export class CapRedisUnavailableError extends Error {
   constructor() {
@@ -19,77 +26,79 @@ export class CapRedisUnavailableError extends Error {
 
 export class CapExceededError extends Error {
   readonly remaining: number;
-  constructor(remaining: number) {
-    super(`Spend cap exceeded. Remaining: ${remaining} cents. (F-077, COST_CEILING_HIT)`);
+  readonly scope: "account" | "global";
+  constructor(remaining: number, scope: "account" | "global" = "account") {
+    super(`Spend cap exceeded (${scope}). Remaining: ${remaining} cents.`);
     this.name = "CapExceededError";
     this.remaining = remaining;
+    this.scope = scope;
   }
 }
 
-/**
- * Lua script for atomic cap reserve.
- * Returns: [allowed: 0|1, remaining: number]
- * Atomicity guarantees: no two concurrent calls can both "see" headroom they together exceed.
- */
+// ---------------------------------------------------------------------------
+// Lua scripts — atomic compare-and-set
+// ---------------------------------------------------------------------------
+
 const RESERVE_LUA = `
 local key = KEYS[1]
 local ceiling = tonumber(ARGV[1])
 local cost = tonumber(ARGV[2])
-local reservation_id = ARGV[3]
-
--- Get current committed + reserved
+local rid = ARGV[3]
 local committed = tonumber(redis.call('HGET', key, 'committed') or '0')
-local reserved = tonumber(redis.call('HGET', key, 'reserved') or '0')
+local reserved  = tonumber(redis.call('HGET', key, 'reserved')  or '0')
 local total = committed + reserved
-
 if total + cost > ceiling then
   return {0, ceiling - total}
 end
-
--- Reserve
 redis.call('HSET', key, 'reserved', reserved + cost)
-redis.call('HSET', key, 'res:' .. reservation_id, cost)
+redis.call('HSET', key, 'res:' .. rid, cost)
 return {1, ceiling - (total + cost)}
 `;
 
 const COMMIT_LUA = `
 local key = KEYS[1]
-local reservation_id = ARGV[1]
-local actual_cost = tonumber(ARGV[2])
-
-local reserved_cost = tonumber(redis.call('HGET', key, 'res:' .. reservation_id) or '0')
-local reserved = tonumber(redis.call('HGET', key, 'reserved') or '0')
+local rid  = ARGV[1]
+local actual = tonumber(ARGV[2])
+local rcost = tonumber(redis.call('HGET', key, 'res:' .. rid) or '0')
+local reserved  = tonumber(redis.call('HGET', key, 'reserved')  or '0')
 local committed = tonumber(redis.call('HGET', key, 'committed') or '0')
-
--- Release reservation, commit actual
-redis.call('HDEL', key, 'res:' .. reservation_id)
-redis.call('HSET', key, 'reserved', math.max(0, reserved - reserved_cost))
-redis.call('HSET', key, 'committed', committed + actual_cost)
+redis.call('HDEL', key, 'res:' .. rid)
+redis.call('HSET', key, 'reserved',  math.max(0, reserved - rcost))
+redis.call('HSET', key, 'committed', committed + actual)
 return 1
 `;
 
 const RELEASE_LUA = `
 local key = KEYS[1]
-local reservation_id = ARGV[1]
-
-local reserved_cost = tonumber(redis.call('HGET', key, 'res:' .. reservation_id) or '0')
+local rid  = ARGV[1]
+local rcost = tonumber(redis.call('HGET', key, 'res:' .. rid) or '0')
 local reserved = tonumber(redis.call('HGET', key, 'reserved') or '0')
-
-redis.call('HDEL', key, 'res:' .. reservation_id)
-redis.call('HSET', key, 'reserved', math.max(0, reserved - reserved_cost))
+redis.call('HDEL', key, 'res:' .. rid)
+redis.call('HSET', key, 'reserved', math.max(0, reserved - rcost))
 return 1
 `;
 
-function getAccountCapKey(accountId: string): string {
+const HEADROOM_LUA = `
+local key = KEYS[1]
+local committed = tonumber(redis.call('HGET', key, 'committed') or '0')
+local reserved  = tonumber(redis.call('HGET', key, 'reserved')  or '0')
+local ceiling   = tonumber(redis.call('HGET', key, 'ceiling')   or ARGV[1])
+return ceiling - committed - reserved
+`;
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+function accountKey(accountId: string): string {
   return `cap:account:${accountId}`;
 }
-
-const GLOBAL_CAP_KEY = "cap:global";
+const GLOBAL_KEY = "cap:global";
 
 /**
- * Atomically reserve capacity before a spend. FAIL-CLOSED.
- * @throws CapRedisUnavailableError if Redis is down
- * @throws CapExceededError if cap would be exceeded
+ * Atomically reserve projected cost before spending. FAIL-CLOSED.
+ * @throws CapRedisUnavailableError — Redis is down
+ * @throws CapExceededError — cap would be exceeded
  */
 export async function atomicCapReserve(
   redis: IORedis,
@@ -100,45 +109,32 @@ export async function atomicCapReserve(
   globalCeilingCents: number
 ): Promise<void> {
   try {
-    // Check account cap
-    const accountResult = await redis.eval(
-      RESERVE_LUA,
-      1,
-      getAccountCapKey(accountId),
-      accountCeilingCents.toString(),
-      projectedCostCents.toString(),
-      reservationId
-    ) as [number, number];
+    const acctResult = (await redis.eval(
+      RESERVE_LUA, 1, accountKey(accountId),
+      String(accountCeilingCents), String(projectedCostCents), reservationId
+    )) as [number, number];
 
-    if (accountResult[0] === 0) {
-      throw new CapExceededError(accountResult[1] ?? 0);
+    if (acctResult[0] === 0) {
+      throw new CapExceededError(acctResult[1] ?? 0, "account");
     }
 
-    // Check global cap
-    const globalResult = await redis.eval(
-      RESERVE_LUA,
-      1,
-      GLOBAL_CAP_KEY,
-      globalCeilingCents.toString(),
-      projectedCostCents.toString(),
-      reservationId
-    ) as [number, number];
+    const globalResult = (await redis.eval(
+      RESERVE_LUA, 1, GLOBAL_KEY,
+      String(globalCeilingCents), String(projectedCostCents), reservationId
+    )) as [number, number];
 
     if (globalResult[0] === 0) {
-      // Release the account reservation we just took
-      await redis.eval(RELEASE_LUA, 1, getAccountCapKey(accountId), reservationId);
-      throw new CapExceededError(globalResult[1] ?? 0);
+      // Release account reservation we just took
+      await redis.eval(RELEASE_LUA, 1, accountKey(accountId), reservationId);
+      throw new CapExceededError(globalResult[1] ?? 0, "global");
     }
   } catch (err) {
     if (err instanceof CapExceededError) throw err;
-    // Any other error = Redis unavailable → fail closed
     throw new CapRedisUnavailableError();
   }
 }
 
-/**
- * Commit the actual spend after successful work.
- */
+/** Commit actual spend after successful work. Logs on failure but doesn't throw. */
 export async function commitCapSpend(
   redis: IORedis,
   accountId: string,
@@ -147,18 +143,15 @@ export async function commitCapSpend(
 ): Promise<void> {
   try {
     await Promise.all([
-      redis.eval(COMMIT_LUA, 1, getAccountCapKey(accountId), reservationId, actualCostCents.toString()),
-      redis.eval(COMMIT_LUA, 1, GLOBAL_CAP_KEY, reservationId, actualCostCents.toString()),
+      redis.eval(COMMIT_LUA, 1, accountKey(accountId), reservationId, String(actualCostCents)),
+      redis.eval(COMMIT_LUA, 1, GLOBAL_KEY, reservationId, String(actualCostCents)),
     ]);
   } catch {
-    // Commit failure is logged but doesn't throw — work is done; reconcile offline
     console.error(`[cap] Commit failed for reservation ${reservationId} — needs offline reconciliation`);
   }
 }
 
-/**
- * Release a reservation without committing (on error/abort).
- */
+/** Release reservation without committing (on error / no-charge cases). */
 export async function releaseCapReservation(
   redis: IORedis,
   accountId: string,
@@ -166,10 +159,32 @@ export async function releaseCapReservation(
 ): Promise<void> {
   try {
     await Promise.all([
-      redis.eval(RELEASE_LUA, 1, getAccountCapKey(accountId), reservationId),
-      redis.eval(RELEASE_LUA, 1, GLOBAL_CAP_KEY, reservationId),
+      redis.eval(RELEASE_LUA, 1, accountKey(accountId), reservationId),
+      redis.eval(RELEASE_LUA, 1, GLOBAL_KEY, reservationId),
     ]);
   } catch {
     console.error(`[cap] Release failed for reservation ${reservationId}`);
   }
+}
+
+/** Get remaining headroom for an account. Returns Infinity if Redis unavailable (fail-open — for display only). */
+export async function getCapHeadroom(
+  redis: IORedis,
+  accountId: string,
+  ceilingCents: number
+): Promise<{ account: number; global: number }> {
+  try {
+    const [acct, glob] = await Promise.all([
+      redis.eval(HEADROOM_LUA, 1, accountKey(accountId), String(ceilingCents)) as Promise<number>,
+      redis.eval(HEADROOM_LUA, 1, GLOBAL_KEY, String(ceilingCents)) as Promise<number>,
+    ]);
+    return { account: Number(acct), global: Number(glob) };
+  } catch {
+    return { account: Infinity, global: Infinity };
+  }
+}
+
+/** Reset cap for a new billing cycle (called by cron or billing webhook). */
+export async function resetCapCycle(redis: IORedis, accountId: string): Promise<void> {
+  await redis.hdel(accountKey(accountId), "committed", "reserved");
 }

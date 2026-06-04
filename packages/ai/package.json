@@ -15,14 +15,14 @@
   },
   "dependencies": {
     "@trajct/contracts": "workspace:*",
-    "ioredis": "^5.4.1",
+    "ioredis": "^5.11.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@trajct/config": "workspace:*",
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.0.0",
-    "@vitest/coverage-v8": "^2.0.0"
+    "vitest": "^2.0.0"
   }
 }

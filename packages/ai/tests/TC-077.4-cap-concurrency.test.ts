@@ -66,20 +66,18 @@ function createCapRedisMock(ceilingCents: number): {
     return 1;
   };
 
-  // Mock eval: detect script type by content length (fragile but OK for unit test)
+  // Mock eval: detect script type by distinctive patterns in the Lua source
   const mockEval = vi.fn().mockImplementation(
     async (script: string, numKeys: number, key: string, ...args: string[]) => {
-      if (script.includes("res:' .. reservation_id, cost")) {
-        // RESERVE
+      // RESERVE: returns a 2-element array and sets a 'reserved' field
+      if (script.includes("return {1, ceiling") || script.includes("local rid  = ARGV[3]") || script.includes("local rid = ARGV[3]")) {
         return reserveScript(key, Number(args[0]), Number(args[1]), args[2] ?? "");
-      } else if (script.includes("HDEL', key, 'res:' .. reservation_id")) {
-        if (script.includes("committed + actual_cost")) {
-          // COMMIT
-          return commitScript(key, args[0] ?? "", Number(args[1]));
-        } else {
+      } else if (script.includes("committed + actual")) {
+        // COMMIT
+        return commitScript(key, args[0] ?? "", Number(args[1]));
+      } else {
           // RELEASE
-          return releaseScript(key, args[0] ?? "");
-        }
+        return releaseScript(key, args[0] ?? "");
       }
       return null;
     }

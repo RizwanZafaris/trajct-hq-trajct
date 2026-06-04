@@ -503,4 +503,13 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_role;
 GRANT SELECT, INSERT ON discovered_jobs TO app_role;
+
+-- Re-apply critical REVOKE grants (002 GRANT ALL undid these from 001_rls_setup.sql)
+-- audit_log: append-only — no UPDATE or DELETE for app_role (TC-080.2)
+REVOKE UPDATE, DELETE ON audit_log FROM app_role;
+-- consent_records: immutable once written (F-034.2)
+REVOKE UPDATE, DELETE ON consent_records FROM app_role;
+-- billing_ledger: double-entry immutable rows (F-073)
+REVOKE UPDATE, DELETE ON billing_ledger FROM app_role;
+-- screening_sessions: compliance record — no UPDATE by app_role
 REVOKE UPDATE, DELETE ON screening_sessions FROM app_role;
