@@ -1,0 +1,93 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "11.5.1"
+
+jobs:
+  deploy-staging:
+    name: Deploy → Staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: staging
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: trajct
+          POSTGRES_PASSWORD: trajct_dev_password
+          POSTGRES_DB: trajct_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://trajct:trajct_dev_password@localhost:5432/trajct_dev"
+      REDIS_URL: "redis://localhost:6379"
+      NODE_ENV: "test"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: "pnpm" }
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Deploy (placeholder — wire Vercel/Railway CLI in Sprint 1)
+        run: echo "Deploy to staging placeholder — wire Vercel/Railway CLI"
+
+      # Playwright smoke tests after deploy
+      - name: E2E smoke — auth flow + RLS
+        run: echo "Playwright smoke placeholder — wire in Sprint 1 when UI is live"
+
+  deploy-production:
+    name: Deploy → Production (canary)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    environment: production
+    needs: []
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: "pnpm" }
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Deploy canary (placeholder)
+        run: echo "Canary deploy placeholder — wire Vercel prod + Railway deploy in Sprint 1"
+
+      - name: Canary watch — principle metrics
+        run: |
+          echo "Watch principle metrics for 15 min:"
+          echo "  double_charge_total > 0 → rollback"
+          echo "  overspend_beyond_cap_total > 0 → rollback"
+          echo "  trustwall_leak_total > 0 → rollback (sev-1)"
+          echo "  decision_without_log_total > 0 → rollback"
+          echo "Placeholder — wire Sentry/Grafana alerts in Sprint 1"

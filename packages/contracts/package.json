@@ -1,0 +1,28 @@
+{
+  "name": "@trajct/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./auth": "./src/auth.ts",
+    "./org": "./src/org.ts",
+    "./diagnostic": "./src/diagnostic.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "scripts": {
+    "contracts:build": "tsx src/openapi-gen.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.23.0"
+  },
+  "devDependencies": {
+    "@trajct/config": "workspace:*",
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0",
+    "vitest": "^2.0.0"
+  }
+}

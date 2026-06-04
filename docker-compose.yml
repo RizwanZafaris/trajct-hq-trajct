@@ -1,0 +1,66 @@
+version: "3.9"
+
+# Local development infrastructure.
+# Production uses Neon/Supabase (Postgres) + Railway Redis, managed via Terraform.
+# These images are for local dev + CI only.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: trajct_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trajct
+      POSTGRES_PASSWORD: trajct_dev_password
+      POSTGRES_DB: trajct_dev
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./packages/db/src/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trajct -d trajct_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres_shadow:
+    # Shadow DB for migration dry-runs in CI (Drizzle migrate --dry-run)
+    image: pgvector/pgvector:pg16
+    container_name: trajct_postgres_shadow
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trajct
+      POSTGRES_PASSWORD: trajct_dev_password
+      POSTGRES_DB: trajct_shadow
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_shadow_data:/var/lib/postgresql/data
+    profiles:
+      - ci
+
+  redis:
+    image: redis:7-alpine
+    container_name: trajct_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  postgres_shadow_data:
+  redis_data:

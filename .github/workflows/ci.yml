@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "11.5.1"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Secret scan — blocks merge if secrets found (SR-086.4, F-086)
+  # ---------------------------------------------------------------------------
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # F-ID check — every PR must reference an F-ID (Technical-Methodology §1.3)
+  # ---------------------------------------------------------------------------
+  fid-check:
+    name: F-ID in PR title/body
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check F-ID in PR
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! echo "$PR_TITLE$PR_BODY" | grep -qE 'F-[0-9]{3}'; then
+            echo "ERROR: PR must reference at least one F-ID (e.g. F-073, F-001)."
+            echo "See Technical-Methodology §1.3: 'No F-ID = no merge (CI check)'"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Main CI pipeline
+  # ---------------------------------------------------------------------------
+  ci:
+    name: Lint · Typecheck · Test · Build · Contract
+    runs-on: ubuntu-latest
+    needs: [secret-scan]
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: trajct
+          POSTGRES_PASSWORD: trajct_dev_password
+          POSTGRES_DB: trajct_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres_shadow:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: trajct
+          POSTGRES_PASSWORD: trajct_dev_password
+          POSTGRES_DB: trajct_shadow
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://trajct:trajct_dev_password@localhost:5432/trajct_dev"
+      DATABASE_SHADOW_URL: "postgresql://trajct:trajct_dev_password@localhost:5433/trajct_shadow"
+      REDIS_URL: "redis://localhost:6379"
+      OPENROUTER_API_KEY: "sk-test-placeholder"
+      STRIPE_SECRET_KEY: "sk_test_placeholder"
+      NODE_ENV: "test"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # DB setup: enable extensions, run init scripts, run migrations
+      - name: DB setup — extensions
+        run: |
+          PGPASSWORD=trajct_dev_password psql -h localhost -U trajct -d trajct_dev \
+            -f packages/db/src/init/000_extensions.sql
+
+      - name: DB migrate (shadow dry-run first)
+        run: |
+          cd packages/db
+          DATABASE_URL=$DATABASE_SHADOW_URL pnpm db:migrate:dry || true
+          DATABASE_URL=$DATABASE_URL pnpm db:migrate
+
+      - name: DB setup — RLS policies
+        run: |
+          PGPASSWORD=trajct_dev_password psql -h localhost -U trajct -d trajct_dev \
+            -f packages/db/src/policies/001_rls_setup.sql
+
+      # Unit tests (TC-073.7, TC-070.1, TC-080.2, TC-077.4)
+      - name: Unit tests
+        run: pnpm test
+
+      # Contract build — generates docs/api/openapi.json
+      - name: Contracts build
+        run: pnpm contracts:build
+
+      - name: Verify OpenAPI generated
+        run: test -f docs/api/openapi.json && echo "OpenAPI generated ✓"
+
+      # Build all apps
+      - name: Build
+        run: pnpm build
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            **/coverage/
+            **/test-results/
+          retention-days: 7

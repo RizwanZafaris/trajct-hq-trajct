@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Approve build scripts for native modules (required by NestJS and argon2)
+allowBuilds:
+  '@nestjs/core': true
+  argon2: true
+  esbuild: true
+  msgpackr-extract: true
+  sharp: false
