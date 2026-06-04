@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: trajct_dev_password
       POSTGRES_DB: trajct_dev
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./packages/db/src/init:/docker-entrypoint-initdb.d
@@ -34,7 +34,7 @@ services:
       POSTGRES_PASSWORD: trajct_dev_password
       POSTGRES_DB: trajct_shadow
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - postgres_shadow_data:/var/lib/postgresql/data
     profiles:

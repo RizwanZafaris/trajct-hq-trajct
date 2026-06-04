@@ -74,49 +74,38 @@ ALTER TABLE vectors.embeddings FORCE ROW LEVEL SECURITY;
 -- USERS: users can only SELECT/UPDATE their own row
 DROP POLICY IF EXISTS users_self_rls ON users;
 CREATE POLICY users_self_rls ON users
-  USING (id = current_setting('app.current_user_id', true)::uuid)
-  WITH CHECK (id = current_setting('app.current_user_id', true)::uuid);
+  USING (id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+  WITH CHECK (id = nullif(current_setting('app.current_user_id', true), '')::uuid);
 
 -- SESSIONS: users can only see their own sessions
 DROP POLICY IF EXISTS sessions_owner_rls ON sessions;
 CREATE POLICY sessions_owner_rls ON sessions
-  USING (user_id = current_setting('app.current_user_id', true)::uuid)
-  WITH CHECK (user_id = current_setting('app.current_user_id', true)::uuid);
+  USING (user_id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+  WITH CHECK (user_id = nullif(current_setting('app.current_user_id', true), '')::uuid);
 
--- ORGS: members can read their org; admins can update
+-- ORGS: use GUC current_org_id directly to avoid recursive subquery on org_memberships.
+-- The app sets app.current_org_id after validating membership at the session layer.
+-- This avoids infinite recursion: org policy → org_memberships subquery → org_memberships policy → org_memberships subquery...
 DROP POLICY IF EXISTS orgs_member_rls ON orgs;
 CREATE POLICY orgs_member_rls ON orgs
   FOR SELECT
   USING (
-    id IN (
-      SELECT org_id FROM org_memberships
-      WHERE user_id = current_setting('app.current_user_id', true)::uuid
-        AND revoked_at IS NULL
-    )
+    id = nullif(current_setting('app.current_org_id', true), '')::uuid
   );
 
 DROP POLICY IF EXISTS orgs_admin_write_rls ON orgs;
 CREATE POLICY orgs_admin_write_rls ON orgs
   FOR ALL
   USING (
-    id IN (
-      SELECT org_id FROM org_memberships
-      WHERE user_id = current_setting('app.current_user_id', true)::uuid
-        AND role = 'admin'
-        AND revoked_at IS NULL
-    )
+    id = nullif(current_setting('app.current_org_id', true), '')::uuid
   );
 
--- ORG_MEMBERSHIPS: members see their org's memberships; no cross-org
+-- ORG_MEMBERSHIPS: users can only see rows for their current org (GUC-scoped).
+-- No subquery on org_memberships itself to avoid infinite recursion.
 DROP POLICY IF EXISTS org_memberships_member_rls ON org_memberships;
 CREATE POLICY org_memberships_member_rls ON org_memberships
   USING (
-    org_id = current_setting('app.current_org_id', true)::uuid
-    AND org_id IN (
-      SELECT org_id FROM org_memberships
-      WHERE user_id = current_setting('app.current_user_id', true)::uuid
-        AND revoked_at IS NULL
-    )
+    org_id = nullif(current_setting('app.current_org_id', true), '')::uuid
   );
 
 -- AUDIT_LOG: SELECT only for compliance/admin roles; INSERT always allowed
@@ -128,33 +117,33 @@ DROP POLICY IF EXISTS audit_log_select_rls ON audit_log;
 CREATE POLICY audit_log_select_rls ON audit_log
   FOR SELECT USING (
     -- Users see audit log entries for their org only
-    org_id = current_setting('app.current_org_id', true)::uuid
-    OR actor_id = current_setting('app.current_user_id', true)::uuid
+    org_id = nullif(current_setting('app.current_org_id', true), '')::uuid
+    OR actor_id = nullif(current_setting('app.current_user_id', true), '')::uuid
   );
 
 -- CONSENT_RECORDS: users see only their own consent records
 DROP POLICY IF EXISTS consent_records_owner_rls ON consent_records;
 CREATE POLICY consent_records_owner_rls ON consent_records
-  USING (user_id = current_setting('app.current_user_id', true)::uuid)
-  WITH CHECK (user_id = current_setting('app.current_user_id', true)::uuid);
+  USING (user_id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+  WITH CHECK (user_id = nullif(current_setting('app.current_user_id', true), '')::uuid);
 
 -- USAGE_EVENTS: accounts see only their own
 DROP POLICY IF EXISTS usage_events_owner_rls ON usage_events;
 CREATE POLICY usage_events_owner_rls ON usage_events
-  USING (account_id = current_setting('app.current_user_id', true)::uuid)
-  WITH CHECK (account_id = current_setting('app.current_user_id', true)::uuid);
+  USING (account_id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+  WITH CHECK (account_id = nullif(current_setting('app.current_user_id', true), '')::uuid);
 
 -- BILLING_LEDGER: accounts see only their own
 DROP POLICY IF EXISTS billing_ledger_owner_rls ON billing_ledger;
 CREATE POLICY billing_ledger_owner_rls ON billing_ledger
-  USING (account_id = current_setting('app.current_user_id', true)::uuid)
-  WITH CHECK (account_id = current_setting('app.current_user_id', true)::uuid);
+  USING (account_id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+  WITH CHECK (account_id = nullif(current_setting('app.current_user_id', true), '')::uuid);
 
 -- JOBS_QUEUE_STATUS: accounts see only their own jobs
 DROP POLICY IF EXISTS jobs_queue_status_owner_rls ON jobs_queue_status;
 CREATE POLICY jobs_queue_status_owner_rls ON jobs_queue_status
-  USING (account_id = current_setting('app.current_user_id', true)::uuid)
-  WITH CHECK (account_id = current_setting('app.current_user_id', true)::uuid);
+  USING (account_id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+  WITH CHECK (account_id = nullif(current_setting('app.current_user_id', true), '')::uuid);
 
 -- FEATURE_FLAGS: all authenticated users can SELECT (evaluated server-side, no write via RLS)
 DROP POLICY IF EXISTS feature_flags_read_rls ON feature_flags;
@@ -168,6 +157,6 @@ DROP POLICY IF EXISTS embeddings_owner_rls ON vectors.embeddings;
 CREATE POLICY embeddings_owner_rls ON vectors.embeddings
   USING (
     (owner_scope = 'global')
-    OR (owner_scope = 'user' AND owner_id = current_setting('app.current_user_id', true)::uuid)
-    OR (owner_scope = 'org' AND owner_id = current_setting('app.current_org_id', true)::uuid)
+    OR (owner_scope = 'user' AND owner_id = nullif(current_setting('app.current_user_id', true), '')::uuid)
+    OR (owner_scope = 'org' AND owner_id = nullif(current_setting('app.current_org_id', true), '')::uuid)
   );

@@ -26,9 +26,11 @@ export const db = drizzle(sql, { schema });
  * GUCs are used by Postgres RLS policies.
  */
 export async function setRlsContext(userId: string, orgId: string | null): Promise<void> {
-  await sql`SELECT set_config('app.current_user_id', ${userId}, true)`;
+  // Use false (session-level) so the GUC persists across autocommit queries in the same connection.
+  // Use true (transaction-local) only when inside an explicit transaction.
+  await sql`SELECT set_config('app.current_user_id', ${userId}, false)`;
   if (orgId) {
-    await sql`SELECT set_config('app.current_org_id', ${orgId}, true)`;
+    await sql`SELECT set_config('app.current_org_id', ${orgId}, false)`;
   }
 }
 

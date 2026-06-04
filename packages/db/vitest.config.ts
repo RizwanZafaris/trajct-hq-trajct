@@ -5,8 +5,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    // DB tests need a real Postgres — skip if DATABASE_URL not set
-    exclude: process.env["DATABASE_URL"] ? [] : ["tests/**"],
+    exclude: ["**/._*", "**/node_modules/**", ...(process.env["DATABASE_URL"] ? [] : ["tests/**"])],
     testTimeout: 30000,
     coverage: {
       provider: "v8",
