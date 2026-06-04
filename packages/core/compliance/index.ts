@@ -8,8 +8,8 @@
  * `writeDecisionLog` without a valid `consentRef` throws — no consent = no log = no decision.
  */
 
-export type { DecisionLogEntry, DecisionLogResult } from "./decision-log.js";
-export { writeDecisionLog, DecisionLogWriteError, ConsentMissingError } from "./decision-log.js";
+export type { DecisionLogEntry, DecisionLogResult, ChainVerification } from "./decision-log.js";
+export { writeDecisionLog, verifyChain, DecisionLogWriteError, ConsentMissingError } from "./decision-log.js";
 
 export type { DsarExportRequest, DsarDeleteRequest, DsarResult } from "./dsar.js";
 export { exportUserData, deleteUserData } from "./dsar.js";

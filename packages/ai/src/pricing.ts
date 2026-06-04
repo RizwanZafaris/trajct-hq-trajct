@@ -68,10 +68,35 @@ export function modelForTier(tier: TaskTier): string {
   }
 }
 
+/**
+ * [REVIEW NOTE — R10] Model IDs and prices in PRICING_PER_1M are forward-dated.
+ * VERIFY EVERY PRICE against the live provider pricing page before launch.
+ * Silent default pricing is how cost drift hides — hence the WARN below.
+ */
+
+/** Resolve (inputUsdPer1M, outputUsdPer1M), logging a WARN when an unknown model
+ *  falls back to the safe default rate (R10 — never let cost drift hide). */
+function rateFor(model: string): [number, number] {
+  const rate = PRICING_PER_1M[model];
+  if (!rate) {
+    console.warn(`[pricing] WARN unknown model "${model}" — using default rate ${FALLBACK_PRICE[0]}/${FALLBACK_PRICE[1]} per 1M. Add it to PRICING_PER_1M.`);
+    return FALLBACK_PRICE;
+  }
+  return rate;
+}
+
 /** Compute USD cost for a completion given token counts. */
 export function computeCostUsd(model: string, inputTokens: number, outputTokens: number): number {
-  const [inP, outP] = PRICING_PER_1M[model] ?? FALLBACK_PRICE;
+  const [inP, outP] = rateFor(model);
   return (inputTokens / 1_000_000) * inP + (outputTokens / 1_000_000) * outP;
+}
+
+/**
+ * Estimate cost in integer cents (rounded up). Used for pre-spend estimation and
+ * post-spend metering. Logs a WARN on unknown-model fallback (R10).
+ */
+export function estimateCostCents(model: string, inputTokens: number, outputTokens: number): number {
+  return usdToCents(computeCostUsd(model, inputTokens, outputTokens));
 }
 
 /** USD → integer cents (rounded up so we never under-reserve against the cap). */

@@ -12,7 +12,7 @@ export {
 
 export { route, routeEmbed } from "./router.js";
 export { OPENROUTER_MODEL_MAP, openRouterModelFor, openRouterAvailable, chatViaOpenRouter } from "./fallback.js";
-export { PRICING_PER_1M, modelForTier, computeCostUsd, usdToCents, estimateProjectedCents } from "./pricing.js";
+export { PRICING_PER_1M, modelForTier, computeCostUsd, usdToCents, estimateProjectedCents, estimateCostCents } from "./pricing.js";
 export {
   isCircuitOpen, recordSuccess, recordFailure, resetBreakers, backoffMs,
 } from "./hardening.js";

@@ -15,7 +15,7 @@
 
 import { Worker, type Job } from "bullmq";
 import { QUEUE_NAMES, getRedisConnection } from "../queues.js";
-import { writeDecisionLog } from "@trajct/core/compliance";
+import { writeDecisionLog, exportUserData, deleteUserData } from "@trajct/core/compliance";
 
 export interface DecisionLogJobData {
   type: "compliance.log_decision";
@@ -94,6 +94,7 @@ async function handleDecisionLog(data: DecisionLogJobData): Promise<{ logId: str
     orgId: data.orgId,
     ...(data.jobId ? { jobId: data.jobId } : {}),
     inputsHash: data.inputsHash,
+    idempotencyKey: data.idempotencyKey,   // [R3] dedup key (distinct from inputs_hash)
     modelVersion: data.modelVersion,
     promptVersion: data.promptVersion,
     rationale: data.rationale,
@@ -106,19 +107,21 @@ async function handleDecisionLog(data: DecisionLogJobData): Promise<{ logId: str
 
 async function handleDsarExport(data: DsarExportJobData): Promise<void> {
   console.log(`[compliance:export] DSAR export for user ${data.userId}`);
-  // TODO: Collect all user data from Postgres, vectors, R2 → generate export bundle
-  // Upload to R2 (exports bucket, short-TTL presigned URL) → email link to user
-  throw new Error("F-082 DSAR export not implemented");
+  // Identity verification happens at the API layer (F-082.5); the worker trusts the gate.
+  const result = await exportUserData({ userId: data.userId, verificationToken: "verified-upstream", requestId: data.requestId });
+  console.log(`[compliance:export] export ${result.status} for request ${data.requestId}`);
+  // R2 upload + email delivery of the bundle is a Platform-sprint step (result.status='pending').
 }
 
 async function handleDsarDelete(data: DsarDeleteJobData): Promise<{ residualPiiCount: number }> {
   console.log(`[compliance:delete] DSAR delete for user ${data.userId}`);
-  // TODO: orchestrated deletion:
-  // 1. Postgres: cascade-delete user rows; anonymize outcome data (FR-082.3)
-  // 2. vectors.embeddings: DELETE WHERE owner_id = userId
-  // 3. Redis: clear session + cap counter keys
-  // 4. R2: delete resume files, generated PDFs
-  // 5. Scan for residual PII → residualPiiCount MUST = 0 (TC-082.6)
-  // 6. Email deletion confirmation to user
-  throw new Error("F-082 DSAR delete not implemented");
+  // Postgres: anonymize outcomes FIRST (FR-082.3), then erase private rows, then residual scan.
+  const result = await deleteUserData({ userId: data.userId, verificationToken: "verified-upstream", requestId: data.requestId });
+  console.log(`[compliance:delete] residualPii=${result.residualPiiCount} anonymizedOutcomes=${result.anonymizedOutcomeCount}`);
+  if ((result.residualPiiCount ?? 1) > 0) {
+    // Fail-closed: residual PII is a deletion failure (TC-082.6) → job retries / alerts.
+    throw new Error(`DSAR delete incomplete: ${result.residualPiiCount} residual PII rows`);
+  }
+  // TODO (Platform sprint): vectors.embeddings + Redis + R2 sweep, deletion-confirmation email.
+  return { residualPiiCount: result.residualPiiCount ?? 0 };
 }

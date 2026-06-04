@@ -15,6 +15,7 @@ import { gateway, SYSTEM_ACCOUNT_ID } from "../gateway.js";
 import {
   assignCredit, upsertPersona, getPersona, listStalePersonas, decayFreshness,
   runDiscovery, persistDiscoveredJobs, scoreJobLegitimacy, defaultUrlReachable,
+  safeFetch, SSRFBlockedError,
   type SynthesisResult, type DiscoveredJob,
 } from "@trajct/core/engine";
 
@@ -116,13 +117,16 @@ async function gatherResearch(companyName: string, domain?: string): Promise<Res
   const evidenceRefs: string[] = [];
   await Promise.all(urls.map(async (url) => {
     try {
-      const resp = await fetch(url, { headers: { "User-Agent": "Trajct/1.0 Persona-Research" }, signal: AbortSignal.timeout(8000) });
-      if (resp.ok) {
-        const html = await resp.text();
-        texts.push(html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 6000));
+      // [R6] SSRF-safe: resolves+checks the host (and redirects) against private ranges.
+      const resp = await safeFetch(url, { userAgent: "Trajct/1.0 Persona-Research", maxBytes: 6000 });
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        texts.push(resp.text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 6000));
         evidenceRefs.push(url);
       }
-    } catch { /* best-effort */ }
+    } catch (err) {
+      if (err instanceof SSRFBlockedError) console.warn(`[research] SSRF blocked ${url}: ${err.message}`);
+      /* best-effort otherwise */
+    }
   }));
   if (texts.length === 0) texts.push(`Company name: ${companyName}. No public research available.`);
   return { text: texts.join("\n\n"), evidenceRefs };

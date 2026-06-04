@@ -5,6 +5,7 @@
  */
 
 import { createHash } from "crypto";
+import { safeFetch } from "../safe-fetch.js";
 import type { JobDiscoveryAdapter, DiscoveryQuery, DiscoveredJob } from "./types.js";
 
 export class FetchAdapter implements JobDiscoveryAdapter {
@@ -21,12 +22,10 @@ export class FetchAdapter implements JobDiscoveryAdapter {
     for (const company of query.companies ?? []) {
       if (!/^https?:\/\//.test(company)) continue;
       try {
-        const resp = await fetch(company, {
-          headers: { "User-Agent": "Trajct/1.0 Job-Discovery" },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!resp.ok) continue;
-        const html = await resp.text();
+        // [R6] SSRF-safe fetch — careers URLs may be user-supplied.
+        const resp = await safeFetch(company, { userAgent: "Trajct/1.0 Job-Discovery" });
+        if (resp.statusCode < 200 || resp.statusCode >= 300) continue;
+        const html = resp.text;
         const links = this.extractJobLinks(html, company);
         for (const link of links.slice(0, query.limit)) {
           results.push({
