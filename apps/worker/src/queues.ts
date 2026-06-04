@@ -13,8 +13,8 @@
  * DLQ: each queue has a failed job retention; q.compliance DLQ depth > 0 → CRITICAL alert.
  */
 
-import { Queue, QueueEvents } from "bullmq";
-import IORedis from "ioredis";
+import { Queue } from "bullmq";
+import { Redis } from "ioredis";
 
 export const QUEUE_NAMES = {
   INGEST: "q.ingest",
@@ -31,11 +31,11 @@ export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 
 // Singleton Redis connection for BullMQ
-let _connection: IORedis | null = null;
+let _connection: Redis | null = null;
 
-export function getRedisConnection(): IORedis {
+export function getRedisConnection(): Redis {
   if (!_connection) {
-    _connection = new IORedis(redisUrl, {
+    _connection = new Redis(redisUrl, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
     });

@@ -1,26 +1,49 @@
 /**
  * packages/core/engine — Public API (trust wall boundary)
  *
- * FRD ownership: F-050 (Outcome logging + cite-markers), F-051 (Outcome-learning loop),
- *               F-052 (Per-company persona synthesis), F-057 (Provider-agnostic AI layer),
- *               F-060 (Trust wall)
+ * FRD ownership: F-050, F-051, F-052, F-053, F-054, F-055, F-056, F-058, F-059, F-060
  *
- * TRUST WALL (F-060): This index is the ONLY thing employer-side code may import.
- * CandidatePublicProjection is the only type crossing the boundary.
- * Engine internals are private — the lint rule (eslint-plugin-boundaries) enforces this.
+ * TRUST WALL (F-060): Employer-side code may import ONLY CandidatePublicProjection.
+ * The lint rule (eslint-plugin-boundaries) enforces this; everything else here is for
+ * candidate-side services and the worker.
  */
 
-// Trust wall: the only type employer code may use
-export type { CandidatePublicProjection } from "./trust-wall";
+// --- Trust wall (F-060): the ONLY type employer code may use --------------
+export type { CandidatePublicProjection } from "./trust-wall.js";
 
-// Cite-markers substrate (F-050) — used by both candidate and employer artifacts
-export type { CiteMarker, ArtifactWithCitations } from "./cite-markers";
-export { attachCiteMarkers, resolveCiteMarker } from "./cite-markers";
+// --- F-050 cite-markers ---------------------------------------------------
+export type { CiteMarker, ArtifactWithCitations } from "./cite-markers.js";
+export { attachCiteMarkers, extractCiteMarkers, resolveCiteMarker, upsertKnowledgeRef } from "./cite-markers.js";
 
-// Outcome logging (F-050) — required from day one even before the learning loop is live
-export type { OutcomeEvent, OutcomeRecord } from "./outcome";
-export { logOutcome, getOutcome } from "./outcome";
+// --- F-050 outcome logging ------------------------------------------------
+export type { OutcomeEvent, OutcomeRecord } from "./outcome.js";
+export { logOutcome, getOutcome, OutcomeConsentMissingError } from "./outcome.js";
 
-// Persona synthesis (F-052) — public interface only
-export type { CompanyPersona, PersonaQuery } from "./persona";
-export { getPersona, synthesizePersona } from "./persona";
+// --- F-051 outcome-learning loop ------------------------------------------
+export type { CreditAssignResult } from "./outcome-loop.js";
+export { assignCredit, CREDIT_DELTA } from "./outcome-loop.js";
+
+// --- F-052 / F-054 persona ------------------------------------------------
+export type { CompanyPersona, PersonaQuery, AtsKeywordBank, SynthesisResult } from "./persona.js";
+export {
+  getPersona, getOrSynthesize, synthesizePersona, upsertPersona,
+  listStalePersonas, decayFreshness,
+} from "./persona.js";
+
+// --- F-053 enrichment (internal signal — not employer-facing) -------------
+export type { CompanyEnrichmentResult } from "./enrichment.js";
+export { enrichCompany, getCachedEnrichment, enrichmentAvailable } from "./enrichment.js";
+
+// --- F-055 voice calibration ----------------------------------------------
+export type { VoiceProfile, EngineComplete } from "./voice.js";
+export { voiceExtract, voiceInject, getVoiceProfile } from "./voice.js";
+
+// --- F-058 job discovery --------------------------------------------------
+export type { DiscoveredJob, DiscoveryQuery, JobDiscoveryAdapter } from "./discovery/index.js";
+export { runDiscovery, persistDiscoveredJobs } from "./discovery/index.js";
+
+// --- F-059 legitimacy filter ----------------------------------------------
+export type { LegitimacyResult, LegitimacyTier, LegitimacyInput, LegitimacyDeps } from "./legitimacy.js";
+export {
+  scoreJobLegitimacy, ageScore, repostScore, compositeScore, tierFor, defaultUrlReachable,
+} from "./legitimacy.js";

@@ -24,5 +24,11 @@ export interface DsarResult {
   completedAt?: string;
 }
 
-export declare function exportUserData(req: DsarExportRequest): Promise<DsarResult>;
-export declare function deleteUserData(req: DsarDeleteRequest): Promise<DsarResult>;
+// F-082 — out of Sprint A scope (Platform Sprint W11-12). Real bindings so the
+// ESM re-export resolves; bodies throw until implemented.
+export function exportUserData(_req: DsarExportRequest): Promise<DsarResult> {
+  throw new Error("F-082 DSAR export not implemented — Platform Sprint");
+}
+export function deleteUserData(_req: DsarDeleteRequest): Promise<DsarResult> {
+  throw new Error("F-082 DSAR delete not implemented — Platform Sprint");
+}
