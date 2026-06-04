@@ -121,22 +121,25 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # DB setup: enable extensions, run init scripts, run migrations
-      - name: DB setup — extensions
+      # DB setup: apply the full SQL migration sequence (raw SQL is the source of truth).
+      # Order matters: extensions → spine schema → RLS roles/policies → feature → engine roles → engine.
+      - name: DB migrate — dry-run on shadow DB
         run: |
-          PGPASSWORD=trajct_dev_password psql -h localhost -U trajct -d trajct_dev \
-            -f packages/db/src/init/000_extensions.sql
+          for f in 000_extensions 001_schema 002_feature_schema 002b_engine_roles 003_engine_schema; do
+            PGPASSWORD=trajct_dev_password psql -h localhost -p 5433 -U trajct -d trajct_shadow \
+              -v ON_ERROR_STOP=1 -f packages/db/src/init/$f.sql
+          done
+          PGPASSWORD=trajct_dev_password psql -h localhost -p 5433 -U trajct -d trajct_shadow \
+            -v ON_ERROR_STOP=1 -f packages/db/src/policies/001_rls_setup.sql
 
-      - name: DB migrate (shadow dry-run first)
+      - name: DB migrate — apply to primary
         run: |
-          cd packages/db
-          DATABASE_URL=$DATABASE_SHADOW_URL pnpm db:migrate:dry || true
-          DATABASE_URL=$DATABASE_URL pnpm db:migrate
-
-      - name: DB setup — RLS policies
-        run: |
+          for f in 000_extensions 001_schema 002_feature_schema 002b_engine_roles 003_engine_schema; do
+            PGPASSWORD=trajct_dev_password psql -h localhost -U trajct -d trajct_dev \
+              -v ON_ERROR_STOP=1 -f packages/db/src/init/$f.sql
+          done
           PGPASSWORD=trajct_dev_password psql -h localhost -U trajct -d trajct_dev \
-            -f packages/db/src/policies/001_rls_setup.sql
+            -v ON_ERROR_STOP=1 -f packages/db/src/policies/001_rls_setup.sql
 
       # Unit tests (TC-073.7, TC-070.1, TC-080.2, TC-077.4)
       - name: Unit tests
