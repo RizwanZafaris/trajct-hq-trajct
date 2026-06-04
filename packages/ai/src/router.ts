@@ -6,7 +6,7 @@
 
 import { resolvePrimaryProvider, openrouterProvider } from "./providers/index.js";
 import { chatViaOpenRouter, openRouterAvailable } from "./fallback.js";
-import { isCircuitOpen, recordSuccess, recordFailure } from "./hardening.js";
+import { isCircuitOpen, recordSuccess, recordFailure, backoffMs } from "./hardening.js";
 import { ProviderError } from "./types.js";
 import type { RawChatRequest, RawChatResult, RawEmbedResult } from "./types.js";
 
@@ -15,15 +15,25 @@ export interface RouterResult extends RawChatResult {
   usedFallback: boolean;
 }
 
+/** Up to 2 retries on the primary before falling back to OpenRouter (env-overridable). */
+const MAX_RETRIES = parseInt(process.env["AI_MAX_RETRIES"] ?? "2", 10);
+
 /** monotonic clock — overridable in tests via the `now` param of route(). */
 function defaultNow(): number {
   // Date.now() is unavailable in workflow scripts but fine in app/test runtime.
   return Date.now();
 }
 
+/** No real delay under Vitest so retry tests stay fast. */
+async function sleep(ms: number): Promise<void> {
+  if (process.env["VITEST"]) return;
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 /**
- * Route a chat request to its primary provider; on a retriable failure (or open
- * circuit), fall back to OpenRouter. On a non-retriable failure, propagate.
+ * Route a chat request to its primary provider with ≤2 retries on retriable errors,
+ * then the OpenRouter safety fallback. Non-retriable (4xx) failures propagate immediately
+ * and never trigger the fallback or count against the circuit breaker.
  */
 export async function route(
   req: RawChatRequest,
@@ -41,20 +51,26 @@ export async function route(
   }
 
   const circuitOpen = isCircuitOpen(primary.name, nowFn());
+  let lastErr: ProviderError | null = null;
 
   if (!circuitOpen) {
-    try {
-      const r = await primary.chat(req);
-      recordSuccess(primary.name);
-      return { ...r, provider: primary.name, usedFallback: false };
-    } catch (err) {
-      const provErr = err instanceof ProviderError ? err : new ProviderError(primary.name, 500, String(err), true);
-      // Non-retriable (e.g. 400 bad request, missing key) → do NOT fall back.
-      if (!provErr.retriable) throw provErr;
-      recordFailure(primary.name, nowFn());
-      // fall through to OpenRouter
-      if (!openRouterAvailable()) throw provErr; // never silently degrade
+    // Attempt the primary up to (1 + MAX_RETRIES) times on retriable failures.
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const r = await primary.chat(req);
+        recordSuccess(primary.name);
+        return { ...r, provider: primary.name, usedFallback: false };
+      } catch (err) {
+        const provErr = err instanceof ProviderError ? err : new ProviderError(primary.name, 500, String(err), true);
+        // Non-retriable (400/401/403/404, missing key, HTTP 500) → propagate, no fallback, no breaker hit.
+        if (!provErr.retriable) throw provErr;
+        lastErr = provErr;
+        if (attempt < MAX_RETRIES) await sleep(backoffMs(attempt, 0.5));
+      }
     }
+    // Exhausted retries on a retriable error → one breaker failure, then fall back.
+    recordFailure(primary.name, nowFn());
+    if (!openRouterAvailable()) throw lastErr ?? new ProviderError(primary.name, 503, "exhausted retries", true);
   } else if (!openRouterAvailable()) {
     // Circuit open and no fallback available → surface a clear error.
     throw new ProviderError(primary.name, 503, "circuit open, no OpenRouter fallback", true);

@@ -112,7 +112,13 @@ export class ProviderError extends Error {
   }
 }
 
-/** Retriable conditions that trigger the OpenRouter fallback rail (per llm_fallback.py). */
+/**
+ * Retriable HTTP statuses that trigger retry + the OpenRouter fallback rail.
+ * Per the architect spec (llm_fallback.py): ONLY 429/502/503/504. NOT 4xx client
+ * errors (400/401/403/404) and NOT 500 (treated as a non-transient provider bug).
+ * Network/transport errors (ETIMEDOUT/ECONNRESET/ECONNREFUSED) are flagged retriable
+ * at the provider layer regardless of this set.
+ */
 export function isRetriableStatus(status: number): boolean {
-  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504 || status === 408;
+  return status === 429 || status === 502 || status === 503 || status === 504;
 }
