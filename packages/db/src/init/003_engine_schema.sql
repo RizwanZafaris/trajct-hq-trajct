@@ -114,8 +114,18 @@ CREATE TABLE IF NOT EXISTS compliance_decision_log (
   consent_ref uuid NOT NULL,
   region varchar(10) NOT NULL,
   hash_chain varchar(64) NOT NULL,
-  recorded_at timestamptz NOT NULL DEFAULT now()
+  chain_seq bigint,                                                -- [FIX R4] deterministic chain order
+  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()      -- [FIX R4] real insert moment (lock-serialized)
 );
+
+-- [FIX R4] Monotonic chain sequence — orders the hash chain by insertion, immune to
+-- clock-tie ambiguity that would make a serialized chain look forked.
+CREATE SEQUENCE IF NOT EXISTS compliance_decision_log_chain_seq;
+ALTER TABLE compliance_decision_log ADD COLUMN IF NOT EXISTS chain_seq bigint;
+ALTER TABLE compliance_decision_log ALTER COLUMN chain_seq SET DEFAULT nextval('compliance_decision_log_chain_seq');
+UPDATE compliance_decision_log SET chain_seq = nextval('compliance_decision_log_chain_seq') WHERE chain_seq IS NULL;
+ALTER TABLE compliance_decision_log ALTER COLUMN chain_seq SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_decision_log_chain_seq ON compliance_decision_log (chain_seq);
 
 -- [FIX R3] Reconcile a pre-existing table (inputs_hash UNIQUE, "timestamp" col, no idempotency_key).
 ALTER TABLE compliance_decision_log ADD COLUMN IF NOT EXISTS idempotency_key varchar(255);
@@ -156,6 +166,7 @@ CREATE POLICY decision_log_read_compliance ON compliance_decision_log
 -- No UPDATE/DELETE policies exist; additionally revoke at the grant level (defense in depth):
 GRANT INSERT ON compliance_decision_log TO trajct_app;
 GRANT SELECT ON compliance_decision_log TO trajct_compliance;
+GRANT USAGE, SELECT ON SEQUENCE compliance_decision_log_chain_seq TO trajct_app, app_role;
 REVOKE UPDATE, DELETE ON compliance_decision_log FROM trajct_app, trajct_compliance, app_role;
 
 -- ---------------------------------------------------------------------------
