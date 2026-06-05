@@ -1,67 +1,44 @@
 /**
  * F-002 / FR-002.8, BR-002.1 — Fabrication (grounding) scan.
  *
- * [FIX R8] FAIL-CLOSED: if the scanner itself errors, that is NOT CLEAN — the caller must
- * not serve and not charge. A guard outage must never become a fabrication bypass. Hence
- * scanFabrication throws FabricationScanError on scanner failure (the caller treats a throw
- * exactly like a detected fabrication: fail the build).
+ * This is a THIN worker-side adapter over the canonical, fail-closed grounding scan in
+ * @trajct/core/engine (F-004). There is now exactly ONE implementation of this security-critical
+ * check; here we only (a) inject a worker-gateway-backed LLM judge (metered against the system
+ * account) and (b) re-throw the engine's GroundingScanError under the historical
+ * `FabricationScanError` name so existing callers (tailor.ts) and tests (TC-002.4) that switch on
+ * `instanceof FabricationScanError` keep working unchanged.
  *
- * Detects any company / role / date / metric in the generated résumé that is NOT traceable
- * to the user's master profile. Heuristic fast-path + LLM judge (utility tier) when keys exist.
+ * [FIX R8] FAIL-CLOSED: if the scanner itself errors, that is NOT CLEAN — the caller must not
+ * serve and not charge. A guard outage must never become a fabrication bypass. The engine enforces
+ * this (judge throw → GroundingScanError); we preserve it (→ FabricationScanError). The caller
+ * treats a throw exactly like a detected fabrication: fail the build.
  */
 
+import { scanGrounding, GroundingScanError, type GroundingResult, type GroundingJudge } from "@trajct/core/engine";
 import { gateway, SYSTEM_ACCOUNT_ID } from "../gateway.js";
 
 export class FabricationScanError extends Error {
-  constructor(reason: string) {
-    super(`Fabrication scan failed (treated as NOT clean): ${reason}`);
+  constructor(reason: string, options?: { cause?: unknown }) {
+    super(`Fabrication scan failed (treated as NOT clean): ${reason}`, options);
     this.name = "FabricationScanError";
   }
 }
 
-export interface FabricationResult {
-  clean: boolean;
-  ungrounded: string[];
-}
+/** Same shape as the engine's GroundingResult — aliased so there is a single definition. */
+export type FabricationResult = GroundingResult;
 
 function hasLlmKeys(): boolean {
   return !!(process.env["ANTHROPIC_API_KEY"] || process.env["OPENAI_API_KEY"] || process.env["OPENROUTER_API_KEY"] || process.env["GOOGLE_API_KEY"]);
 }
 
 /**
- * Extract capitalized company-like tokens that follow "at"/"@" on the SAME line.
- * Tight on purpose: no periods/newlines (so it doesn't capture across sentences), and not
- * "for" (which usually precedes a role, not a company) — keeps the heuristic low-false-positive.
+ * The worker's LLM judge for the engine scan: a utility-tier gateway call, metered against the
+ * system account. The engine merges this verdict with its own company-token heuristic and applies
+ * fail-closed semantics — a throw here (gateway outage OR unparseable output via JSON.parse) is
+ * caught by scanGrounding and surfaced as GroundingScanError.
  */
-function companyTokens(text: string): string[] {
-  const out = new Set<string>();
-  for (const m of text.matchAll(/\b(?:at|@)[ \t]+([A-Z][A-Za-z0-9&]+(?:[ \t]+[A-Z][A-Za-z0-9&]+){0,2})/g)) {
-    if (m[1]) out.add(m[1].trim());
-  }
-  return [...out];
-}
-
-/**
- * Scan generated content for claims not grounded in the profile.
- * @throws FabricationScanError if the (LLM) scanner errors — fail-closed (R8).
- */
-export async function scanFabrication(
-  generated: string,
-  profileText: string,
-  idempotencyKey: string
-): Promise<FabricationResult> {
-  // Heuristic: any company named in the generated résumé that is absent from the profile.
-  const profileLower = profileText.toLowerCase();
-  const ungrounded = companyTokens(generated).filter((c) => !profileLower.includes(c.toLowerCase()));
-
-  if (!hasLlmKeys()) {
-    // Dev / no-LLM: heuristic only.
-    return { clean: ungrounded.length === 0, ungrounded };
-  }
-
-  // LLM judge — the real guard. A scanner error is FAIL-CLOSED (throws).
-  let raw: string;
-  try {
+function gatewayJudge(idempotencyKey: string): GroundingJudge {
+  return async (generated, profileText) => {
     const resp = await gateway().complete({
       task: "resume.fabrication_scan",
       taskTier: "utility",
@@ -74,19 +51,28 @@ export async function scanFabrication(
         { role: "user", content: `## Profile (ground truth):\n${profileText.slice(0, 8000)}\n\n## Tailored résumé:\n${generated.slice(0, 8000)}` },
       ],
     });
-    raw = resp.content;
-  } catch (err) {
-    // [R8] scanner outage → NOT clean. Never let the guard's failure become a bypass.
-    throw new FabricationScanError(err instanceof Error ? err.message : String(err));
-  }
+    const j = JSON.parse(resp.content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "")) as { clean?: boolean; ungrounded?: string[] };
+    return { clean: j.clean === true, ungrounded: (j.ungrounded ?? []).map(String) };
+  };
+}
 
+/**
+ * Scan generated content for claims not grounded in the profile. Delegates to the canonical
+ * engine scan; injects the worker gateway judge only when LLM keys exist (heuristic-only in dev).
+ * @throws FabricationScanError if the scan fails — fail-closed (R8).
+ */
+export async function scanFabrication(
+  generated: string,
+  profileText: string,
+  idempotencyKey: string
+): Promise<FabricationResult> {
   try {
-    const j = JSON.parse(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "")) as { clean?: boolean; ungrounded?: string[] };
-    const llmUngrounded = (j.ungrounded ?? []).map(String);
-    const allUngrounded = [...new Set([...ungrounded, ...llmUngrounded])];
-    return { clean: j.clean === true && allUngrounded.length === 0, ungrounded: allUngrounded };
-  } catch {
-    // Unparseable judge output is also fail-closed.
-    throw new FabricationScanError("scanner returned unparseable output");
+    return await scanGrounding(generated, profileText, hasLlmKeys() ? gatewayJudge(idempotencyKey) : undefined);
+  } catch (err) {
+    // [R8] Re-throw the engine's fail-closed error under the worker's historical name so callers
+    // and tests that switch on `instanceof FabricationScanError` keep working. Detail is preserved
+    // via `cause` (the original GroundingScanError) rather than re-prefixing its message.
+    if (err instanceof GroundingScanError) throw new FabricationScanError("grounding scan failed", { cause: err });
+    throw err;
   }
 }
