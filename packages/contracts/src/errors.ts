@@ -39,6 +39,19 @@ export const DiagnosticErrorCodeSchema = z.discriminatedUnion("code", [
 export type DiagnosticErrorCode = z.infer<typeof DiagnosticErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// F-003 Career-profile-builder errors (FRD §4.3.7)
+// ---------------------------------------------------------------------------
+export const ProfileErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("TOO_MANY_DOCS"),     message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("UNSUPPORTED_FORMAT"), message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("NOT_A_CAREER_DOC"),  message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("PARSE_FAILED"),      message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("MISSING_INPUT"),     message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("ENGINE_UNAVAILABLE"), message: z.string(), retryable: z.literal(true) }),
+]);
+export type ProfileErrorCode = z.infer<typeof ProfileErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // Auth errors
 // ---------------------------------------------------------------------------
 export const AuthErrorCodeSchema = z.discriminatedUnion("code", [
