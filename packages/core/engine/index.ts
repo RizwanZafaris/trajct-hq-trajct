@@ -23,6 +23,10 @@ export { logOutcome, getOutcome, OutcomeConsentMissingError } from "./outcome.js
 export type { CreditAssignResult } from "./outcome-loop.js";
 export { assignCredit, CREDIT_DELTA } from "./outcome-loop.js";
 
+// --- Shared grounding scan (F-002 tailor + F-004 chat-edit), fail-closed --
+export type { GroundingResult, GroundingJudge } from "./grounding.js";
+export { scanGrounding, companyTokens, GroundingScanError } from "./grounding.js";
+
 // --- F-052 / F-054 persona ------------------------------------------------
 export type { CompanyPersona, PersonaQuery, AtsKeywordBank, SynthesisResult } from "./persona.js";
 export {
