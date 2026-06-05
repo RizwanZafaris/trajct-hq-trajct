@@ -97,6 +97,15 @@ export const MonitorErrorCodeSchema = z.discriminatedUnion("code", [
 export type MonitorErrorCode = z.infer<typeof MonitorErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// F-093c DSAR errors (FRD §4.93c.7)
+// ---------------------------------------------------------------------------
+export const DsarErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("IDENTITY_UNVERIFIED"), message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("DELETE_PENDING"),      message: z.string(), retryable: z.literal(false) }),
+]);
+export type DsarErrorCode = z.infer<typeof DsarErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // Auth errors
 // ---------------------------------------------------------------------------
 export const AuthErrorCodeSchema = z.discriminatedUnion("code", [
