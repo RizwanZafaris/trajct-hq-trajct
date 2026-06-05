@@ -19,6 +19,7 @@ import { Worker, Queue, type Job } from "bullmq";
 import postgres from "postgres";
 import { QUEUE_NAMES, getRedisConnection } from "../queues.js";
 import { runDiagnosticScore } from "./diagnostic-score.js";
+import { runTailor } from "./tailor.js";
 
 let _jsql: ReturnType<typeof postgres> | null = null;
 function jsql(): ReturnType<typeof postgres> {
@@ -121,15 +122,15 @@ async function handleDiagnosticScore(data: DiagnosticScoreJobData): Promise<void
 }
 
 async function handleTailor(data: TailorJobData): Promise<void> {
-  console.log(`[frontier:tailor] Tailor resume ${data.tailoredResumeId}`);
-  // TODO Sprint 1 (W8-9):
-  // 1. Cap reserve (already done at API layer; commit here on success, release on failure)
-  // 2. Fetch persona (company_personas table or synthesize)
-  // 3. Gateway.complete({ task: 'resume.tailor', tier: 'frontier', consentRef: undefined })
-  // 4. CRITICAL: fabrication_scan must pass before storing or billing
-  //    If fails → UPDATE status='failed', release cap, do NOT charge (FR-073.4)
-  // 5. On success → upload generated PDF to R2, UPDATE tailored_resumes, commit charge
-  throw new Error("Not implemented — Sprint 1");
+  await runTailor({
+    tailoredResumeId: data.tailoredResumeId,
+    resumeId: data.resumeId,
+    companyId: data.companyId,
+    targetRole: data.targetRole,
+    ...(data.targetJdText ? { targetJdText: data.targetJdText } : {}),
+    userId: data.userId,
+    idempotencyKey: data.idempotencyKey,
+  });
 }
 
 async function handlePrepGenerate(data: PrepGenerateJobData): Promise<void> {
