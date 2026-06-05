@@ -47,6 +47,8 @@ const PRIVATE_TABLES = [
   "linkedin_optimizations", "linkedin_posts", "outreach_drafts", "job_monitors",
   "job_applications", "follow_up_cadences", "offer_evaluations", "notifications",
   "user_voice_profiles", "journeys",
+  // Sprint-B candidate-private stores — must also be erased so residual PII stays 0.
+  "resume_versions", "resume_edit_cursor", "job_alerts", "onboarding_state",
 ] as const;
 
 let _sql: ReturnType<typeof postgres> | null = null;
