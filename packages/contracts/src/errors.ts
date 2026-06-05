@@ -88,6 +88,15 @@ export const PrepErrorCodeSchema = z.discriminatedUnion("code", [
 export type PrepErrorCode = z.infer<typeof PrepErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// F-015 Passive-monitoring config errors (FRD §4.15.7)
+// ---------------------------------------------------------------------------
+export const MonitorErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("TARGET_LIMIT"),   message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("INVALID_FILTER"), message: z.string(), retryable: z.literal(false) }),
+]);
+export type MonitorErrorCode = z.infer<typeof MonitorErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // Auth errors
 // ---------------------------------------------------------------------------
 export const AuthErrorCodeSchema = z.discriminatedUnion("code", [

@@ -27,6 +27,10 @@ export { assignCredit, CREDIT_DELTA } from "./outcome-loop.js";
 export type { GroundingResult, GroundingJudge } from "./grounding.js";
 export { scanGrounding, companyTokens, GroundingScanError } from "./grounding.js";
 
+// --- F-015 alert gate (legitimacy → threshold → dedupe → cap) -------------
+export type { AlertInput, AlertResult, AlertAction, AlertReason, AlertBand } from "./alert-decision.js";
+export { decideAlert, bandMeetsThreshold } from "./alert-decision.js";
+
 // --- F-052 / F-054 persona ------------------------------------------------
 export type { CompanyPersona, PersonaQuery, AtsKeywordBank, SynthesisResult } from "./persona.js";
 export {
