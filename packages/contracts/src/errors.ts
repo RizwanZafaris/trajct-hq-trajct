@@ -66,6 +66,37 @@ export const EditErrorCodeSchema = z.discriminatedUnion("code", [
 export type EditErrorCode = z.infer<typeof EditErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// F-005 Rate-a-job errors (FRD §4.5.7)
+// ---------------------------------------------------------------------------
+export const RateErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("BAD_URL"),            message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("EXTRACT_FAILED"),     message: z.string(), retryable: z.literal(false) }),  // paste path
+  z.object({ code: z.literal("NOT_A_JOB_POSTING"),  message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("RATE_LIMITED"),       message: z.string(), retryable: z.literal(true),  retryAfterSeconds: z.number() }),
+  z.object({ code: z.literal("ENGINE_UNAVAILABLE"), message: z.string(), retryable: z.literal(true) }),
+]);
+export type RateErrorCode = z.infer<typeof RateErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
+// F-007 Interview-prep errors (FRD §4.7.7)
+// ---------------------------------------------------------------------------
+export const PrepErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("COMPANY_NOT_FOUND"),  message: z.string(), retryable: z.literal(true) }),   // research then retry
+  z.object({ code: z.literal("RATE_LIMITED"),       message: z.string(), retryable: z.literal(true),  retryAfterSeconds: z.number() }),
+  z.object({ code: z.literal("ENGINE_UNAVAILABLE"), message: z.string(), retryable: z.literal(true) }),
+]);
+export type PrepErrorCode = z.infer<typeof PrepErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
+// F-015 Passive-monitoring config errors (FRD §4.15.7)
+// ---------------------------------------------------------------------------
+export const MonitorErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("TARGET_LIMIT"),   message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("INVALID_FILTER"), message: z.string(), retryable: z.literal(false) }),
+]);
+export type MonitorErrorCode = z.infer<typeof MonitorErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // Auth errors
 // ---------------------------------------------------------------------------
 export const AuthErrorCodeSchema = z.discriminatedUnion("code", [

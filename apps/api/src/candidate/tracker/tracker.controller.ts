@@ -1,10 +1,11 @@
-import { Controller, Post, Get, Put, Delete, Param, Body, Req, UseGuards, HttpCode, HttpStatus } from "@nestjs/common";
+import { Controller, Post, Get, Put, Delete, Param, Body, Req, UseGuards, HttpCode, HttpStatus, HttpException } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
 import { TrackerService } from "./tracker.service.js";
 import { MonitorService } from "./monitor.service.js";
 import { OfferService } from "./offer.service.js";
 import { RbacGuard, RequireAuth } from "../../common/guards/rbac.guard.js";
-import type { CreateApplication, UpdateApplication, CreateMonitor, RateJobRequest, OfferEvalRequest } from "@trajct/contracts";
+import { CreateMonitorSchema, MonitorSnoozeSchema } from "@trajct/contracts";
+import type { CreateApplication, UpdateApplication, OfferEvalRequest } from "@trajct/contracts";
 
 @Controller("candidate")
 @UseGuards(RbacGuard)
@@ -42,8 +43,12 @@ export class TrackerController {
 
   // F-015: Monitors
   @Post("monitors") @HttpCode(HttpStatus.CREATED)
-  async createMonitor(@Body() b: CreateMonitor, @Req() r: FastifyRequest & { userId?: string }): Promise<unknown> {
-    return this.monitor.createMonitor(b, r.userId ?? "");
+  async createMonitor(@Body() body: unknown, @Req() r: FastifyRequest & { userId?: string }): Promise<unknown> {
+    const parsed = CreateMonitorSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException({ code: "INVALID_FILTER", message: parsed.error.issues[0]?.message ?? "Check your filters.", retryable: false }, 400);
+    }
+    return this.monitor.createMonitor(parsed.data, r.userId ?? "");
   }
   @Get("monitors")
   async listMonitors(@Req() r: FastifyRequest & { userId?: string }): Promise<unknown[]> {
@@ -53,12 +58,25 @@ export class TrackerController {
   async deleteMonitor(@Param("id") id: string, @Req() r: FastifyRequest & { userId?: string }): Promise<void> {
     return this.monitor.deleteMonitor(id, r.userId ?? "");
   }
-
-  // F-005: Rate-a-job
-  @Post("rate-job") @HttpCode(HttpStatus.ACCEPTED)
-  async rateJob(@Body() b: RateJobRequest, @Req() r: FastifyRequest & { userId?: string }): Promise<unknown> {
-    return this.monitor.rateJob(b, r.userId ?? "");
+  /** POST /v1/candidate/monitors/:id/snooze — snooze a window (FR-015.5; setup preserved) */
+  @Post("monitors/:id/snooze")
+  async snoozeMonitor(@Param("id") id: string, @Body() body: unknown, @Req() r: FastifyRequest & { userId?: string }): Promise<unknown> {
+    const parsed = MonitorSnoozeSchema.safeParse(body);
+    if (!parsed.success) throw new HttpException({ code: "INVALID_FILTER", message: "Provide a valid snoozeUntil.", retryable: false }, 400);
+    return this.monitor.snooze(id, r.userId ?? "", parsed.data.snoozeUntil);
   }
+  /** POST /v1/candidate/monitors/:id/pause */
+  @Post("monitors/:id/pause")
+  async pauseMonitor(@Param("id") id: string, @Req() r: FastifyRequest & { userId?: string }): Promise<unknown> {
+    return this.monitor.setPaused(id, r.userId ?? "", true);
+  }
+  /** POST /v1/candidate/monitors/:id/resume */
+  @Post("monitors/:id/resume")
+  async resumeMonitor(@Param("id") id: string, @Req() r: FastifyRequest & { userId?: string }): Promise<unknown> {
+    return this.monitor.setPaused(id, r.userId ?? "", false);
+  }
+
+  // F-005 Rate-a-job is served by RateModule at POST /v1/candidate/jobs/rate.
 
   // F-022: Offer evaluation
   @Post("offers/evaluate") @HttpCode(HttpStatus.CREATED)

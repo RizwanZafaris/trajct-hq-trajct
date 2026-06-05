@@ -10,6 +10,7 @@ import { HealthModule } from "./health/health.module.js";
 // Candidate
 import { DiagnosticModule } from "./diagnostic/diagnostic.module.js";
 import { ResumeModule } from "./candidate/resume/resume.module.js";
+import { RateModule } from "./candidate/rate/rate.module.js";
 import { ProfileModule } from "./candidate/profile/profile.module.js";
 import { PrepModule } from "./candidate/prep/prep.module.js";
 import { TrackerModule } from "./candidate/tracker/tracker.module.js";
@@ -42,7 +43,8 @@ import { AuditInterceptor } from "./common/interceptors/audit.interceptor.js";
 
     // Candidate features
     DiagnosticModule,   // F-001 (diagnostic) — already exists
-    ResumeModule,       // F-001/F-002 (upload + tailor)
+    ResumeModule,       // F-001/F-002 (upload + tailor) + F-004 (chat-edit)
+    RateModule,         // F-005 (rate-a-job)
     ProfileModule,      // F-003
     PrepModule,         // F-007, F-008
     TrackerModule,      // F-005, F-015, F-018, F-020, F-022

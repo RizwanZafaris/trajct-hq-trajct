@@ -20,6 +20,7 @@ import postgres from "postgres";
 import { QUEUE_NAMES, getRedisConnection } from "../queues.js";
 import { runDiagnosticScore } from "./diagnostic-score.js";
 import { runTailor } from "./tailor.js";
+import { runPrep } from "./prep-generate.js";
 
 let _jsql: ReturnType<typeof postgres> | null = null;
 function jsql(): ReturnType<typeof postgres> {
@@ -53,7 +54,9 @@ export interface TailorJobData {
 export interface PrepGenerateJobData {
   type: "prep.generate";
   prepSessionId: string;
-  companyId: string;
+  companyId?: string;
+  target?: string;
+  profileId?: string;
   resumeId?: string;
   prepType: "standard" | "deep" | "leadership";
   userId: string;
@@ -134,9 +137,15 @@ async function handleTailor(data: TailorJobData): Promise<void> {
 }
 
 async function handlePrepGenerate(data: PrepGenerateJobData): Promise<void> {
-  console.log(`[frontier:prep] Generate prep ${data.prepSessionId}`);
-  // TODO V1: Fetch persona → generate questions → UPDATE prep_sessions
-  throw new Error("Not implemented — V1");
+  await runPrep({
+    prepSessionId: data.prepSessionId,
+    ...(data.companyId ? { companyId: data.companyId } : {}),
+    ...(data.target ? { target: data.target } : {}),
+    ...(data.profileId ? { profileId: data.profileId } : {}),
+    prepType: data.prepType,
+    userId: data.userId,
+    idempotencyKey: data.idempotencyKey,
+  });
 }
 
 async function handleJdGenerate(data: JdGenerateJobData): Promise<void> {

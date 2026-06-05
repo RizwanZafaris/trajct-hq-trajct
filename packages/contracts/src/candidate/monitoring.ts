@@ -1,38 +1,42 @@
 import { z } from "zod";
 
-// F-015: Job monitor
+// F-015: Job monitor (config). Limits are enforced in the service as 400 TARGET_LIMIT (exact code).
 export const CreateMonitorSchema = z.object({
   queryName: z.string().max(255),
-  keywords: z.array(z.string().max(100)).max(20),
-  targetCompanies: z.array(z.string().uuid()).max(20).optional(),
-  targetRoles: z.array(z.string().max(255)).max(10),
-  locations: z.array(z.string().max(255)).max(10),
+  keywords: z.array(z.string().max(100)).max(20).default([]),
+  targetCompanies: z.array(z.string().max(255)).max(20).default([]),   // ≤20 (BR-015.1)
+  targetRoles: z.array(z.string().max(255)).max(10).default([]),       // ≤10 (BR-015.1)
+  locations: z.array(z.string().max(255)).max(10).default([]),
+  filters: z.record(z.unknown()).default({}),                          // location/seniority/remote/visa
+  fitThreshold: z.enum(["A", "B", "C"]).default("B"),                  // FR-015.8 (min band)
+  capMode: z.enum(["instant", "digest"]).default("instant"),
+  alertCapPerDay: z.number().int().min(1).max(50).default(5),          // FR-015.7 fair-use
   frequency: z.enum(["realtime", "daily", "weekly"]).default("daily"),
 });
 export type CreateMonitor = z.infer<typeof CreateMonitorSchema>;
 
-// F-005: Rate-a-job
-export const RateJobRequestSchema = z.object({
-  resumeId: z.string().uuid(),
-  jobUrl: z.string().url().optional(),
-  jdText: z.string().max(20000).optional(),
-  idempotencyKey: z.string().max(255),
-}).refine(d => d.jobUrl || d.jdText, { message: "Provide jobUrl or jdText" });
-export type RateJobRequest = z.infer<typeof RateJobRequestSchema>;
+// F-015 snooze/pause (FR-015.5 — never deletes setup).
+export const MonitorSnoozeSchema = z.object({ snoozeUntil: z.string().datetime() });
+export type MonitorSnooze = z.infer<typeof MonitorSnoozeSchema>;
 
-export const RateJobResultSchema = z.object({
-  id: z.string().uuid(),
-  fitScore: z.number().int().min(0).max(100),
-  band: z.enum(["A","B","C","D","E","F"]),
-  reasons: z.array(z.object({
-    issue: z.string(),
-    fix: z.string(),
-    severity: z.enum(["high", "med", "low"]),
-    evidenceRef: z.string(),
-  })),
-  recommendations: z.array(z.string()),
+// F-015 alert payload (FRD §4.15.7).
+export const AlertPayloadSchema = z.object({
+  alertId: z.string().uuid(),
+  role: z.object({ company: z.string(), title: z.string(), url: z.string(), legitimacyTier: z.string() }),
+  fitBand: z.enum(["A", "B", "C", "D", "F"]),
+  whyItFits: z.string(),
+  actions: z.array(z.enum(["rate", "tailor", "dismiss"])),
 });
-export type RateJobResult = z.infer<typeof RateJobResultSchema>;
+export type AlertPayload = z.infer<typeof AlertPayloadSchema>;
+
+// F-015 alert decision (the honest gate; FRD §4.15.8 state model).
+export const AlertDecisionSchema = z.object({
+  action: z.enum(["dispatch", "suppress", "batch"]),
+  reason: z.enum(["ok", "illegitimate", "below_threshold", "duplicate", "over_cap", "paused", "snoozed"]),
+});
+export type AlertDecision = z.infer<typeof AlertDecisionSchema>;
+
+// F-005 Rate-a-job is defined in ./rate-job.ts (FRD §4.5 — 6-dimension rating).
 
 // F-011: LinkedIn optimization
 export const LinkedInOptimizeRequestSchema = z.object({
