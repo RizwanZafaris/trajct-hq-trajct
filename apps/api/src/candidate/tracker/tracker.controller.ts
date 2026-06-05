@@ -4,7 +4,7 @@ import { TrackerService } from "./tracker.service.js";
 import { MonitorService } from "./monitor.service.js";
 import { OfferService } from "./offer.service.js";
 import { RbacGuard, RequireAuth } from "../../common/guards/rbac.guard.js";
-import type { CreateApplication, UpdateApplication, CreateMonitor, RateJobRequest, OfferEvalRequest } from "@trajct/contracts";
+import type { CreateApplication, UpdateApplication, CreateMonitor, OfferEvalRequest } from "@trajct/contracts";
 
 @Controller("candidate")
 @UseGuards(RbacGuard)
@@ -54,11 +54,7 @@ export class TrackerController {
     return this.monitor.deleteMonitor(id, r.userId ?? "");
   }
 
-  // F-005: Rate-a-job
-  @Post("rate-job") @HttpCode(HttpStatus.ACCEPTED)
-  async rateJob(@Body() b: RateJobRequest, @Req() r: FastifyRequest & { userId?: string }): Promise<unknown> {
-    return this.monitor.rateJob(b, r.userId ?? "");
-  }
+  // F-005 Rate-a-job is served by RateModule at POST /v1/candidate/jobs/rate.
 
   // F-022: Offer evaluation
   @Post("offers/evaluate") @HttpCode(HttpStatus.CREATED)

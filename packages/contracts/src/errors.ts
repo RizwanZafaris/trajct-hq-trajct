@@ -66,6 +66,18 @@ export const EditErrorCodeSchema = z.discriminatedUnion("code", [
 export type EditErrorCode = z.infer<typeof EditErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// F-005 Rate-a-job errors (FRD §4.5.7)
+// ---------------------------------------------------------------------------
+export const RateErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("BAD_URL"),            message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("EXTRACT_FAILED"),     message: z.string(), retryable: z.literal(false) }),  // paste path
+  z.object({ code: z.literal("NOT_A_JOB_POSTING"),  message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("RATE_LIMITED"),       message: z.string(), retryable: z.literal(true),  retryAfterSeconds: z.number() }),
+  z.object({ code: z.literal("ENGINE_UNAVAILABLE"), message: z.string(), retryable: z.literal(true) }),
+]);
+export type RateErrorCode = z.infer<typeof RateErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // Auth errors
 // ---------------------------------------------------------------------------
 export const AuthErrorCodeSchema = z.discriminatedUnion("code", [

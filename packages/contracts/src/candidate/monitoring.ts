@@ -11,28 +11,7 @@ export const CreateMonitorSchema = z.object({
 });
 export type CreateMonitor = z.infer<typeof CreateMonitorSchema>;
 
-// F-005: Rate-a-job
-export const RateJobRequestSchema = z.object({
-  resumeId: z.string().uuid(),
-  jobUrl: z.string().url().optional(),
-  jdText: z.string().max(20000).optional(),
-  idempotencyKey: z.string().max(255),
-}).refine(d => d.jobUrl || d.jdText, { message: "Provide jobUrl or jdText" });
-export type RateJobRequest = z.infer<typeof RateJobRequestSchema>;
-
-export const RateJobResultSchema = z.object({
-  id: z.string().uuid(),
-  fitScore: z.number().int().min(0).max(100),
-  band: z.enum(["A","B","C","D","E","F"]),
-  reasons: z.array(z.object({
-    issue: z.string(),
-    fix: z.string(),
-    severity: z.enum(["high", "med", "low"]),
-    evidenceRef: z.string(),
-  })),
-  recommendations: z.array(z.string()),
-});
-export type RateJobResult = z.infer<typeof RateJobResultSchema>;
+// F-005 Rate-a-job is defined in ./rate-job.ts (FRD §4.5 — 6-dimension rating).
 
 // F-011: LinkedIn optimization
 export const LinkedInOptimizeRequestSchema = z.object({
