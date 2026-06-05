@@ -78,6 +78,16 @@ export const RateErrorCodeSchema = z.discriminatedUnion("code", [
 export type RateErrorCode = z.infer<typeof RateErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// F-007 Interview-prep errors (FRD §4.7.7)
+// ---------------------------------------------------------------------------
+export const PrepErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("COMPANY_NOT_FOUND"),  message: z.string(), retryable: z.literal(true) }),   // research then retry
+  z.object({ code: z.literal("RATE_LIMITED"),       message: z.string(), retryable: z.literal(true),  retryAfterSeconds: z.number() }),
+  z.object({ code: z.literal("ENGINE_UNAVAILABLE"), message: z.string(), retryable: z.literal(true) }),
+]);
+export type PrepErrorCode = z.infer<typeof PrepErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // Auth errors
 // ---------------------------------------------------------------------------
 export const AuthErrorCodeSchema = z.discriminatedUnion("code", [

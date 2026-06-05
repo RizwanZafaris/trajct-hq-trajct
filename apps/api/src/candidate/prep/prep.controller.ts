@@ -1,9 +1,11 @@
-import { Controller, Post, Get, Param, Body, Req, UseGuards, HttpCode, HttpStatus } from "@nestjs/common";
+import { Controller, Post, Get, Param, Body, Req, UseGuards, HttpCode, HttpStatus, HttpException } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import type { FastifyRequest } from "fastify";
 import { PrepService } from "./prep.service.js";
 import { MockInterviewService } from "./mock-interview.service.js";
 import { RbacGuard, RequireAuth } from "../../common/guards/rbac.guard.js";
-import type { PrepSessionRequest, MockInterviewStart, MockInterviewTurn } from "@trajct/contracts";
+import { PrepGenerateRequestSchema } from "@trajct/contracts";
+import type { MockInterviewStart, MockInterviewTurn } from "@trajct/contracts";
 
 @Controller("candidate/prep")
 @UseGuards(RbacGuard)
@@ -14,17 +16,22 @@ export class PrepController {
     private readonly mockService: MockInterviewService,
   ) {}
 
-  /** POST /v1/candidate/prep — request interview prep session (F-007) */
+  /** POST /v1/candidate/prep — request a company-grounded interview brief (F-007) */
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  async requestPrep(@Body() body: PrepSessionRequest, @Req() req: FastifyRequest & { userId?: string }): Promise<unknown> {
-    return this.prepService.requestPrepSession(body, req.userId ?? "");
+  @Throttle({ default: { limit: 10, ttl: 3600000 } }) // BR-007.3: 10/hour/user (service also enforces, fail-closed)
+  async requestPrep(@Body() body: unknown, @Req() req: FastifyRequest & { userId?: string }): Promise<unknown> {
+    const parsed = PrepGenerateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException({ code: "VALIDATION_ERROR", message: parsed.error.issues[0]?.message ?? "Invalid request", retryable: false }, 400);
+    }
+    return this.prepService.requestPrep(parsed.data, req.userId ?? "");
   }
 
-  /** GET /v1/candidate/prep/:id */
+  /** GET /v1/candidate/prep/:id — poll the generated brief (F-007) */
   @Get(":id")
   async getPrep(@Param("id") id: string, @Req() req: FastifyRequest & { userId?: string }): Promise<unknown> {
-    return this.prepService.getPrepSession(id, req.userId ?? "");
+    return this.prepService.getPrep(id, req.userId ?? "");
   }
 
   /** POST /v1/candidate/mock — start mock interview (F-008) */
