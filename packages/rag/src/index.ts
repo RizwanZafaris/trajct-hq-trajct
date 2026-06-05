@@ -2,14 +2,14 @@
  * @trajct/rag — Retrieval-Augmented Generation pipeline.
  *
  * Technical-Methodology §3 defines exactly when RAG is appropriate vs. SQL/scoring.
- * Read §3.1 before adding any RAG use case.
+ * RAG ONLY where a citable corpus exists (personas, user docs, help). Never for matching.
  *
- * Pipeline: ingest → chunk → embed → store → retrieve → rerank → generate with citations
- *
- * Trust wall: owner_scope + region filters are applied INSIDE the SQL query, not post-hoc.
- * See Technical-Methodology §3.2 (Metadata per chunk / Retrieval).
+ * Trust wall (F-060): owner_scope + region (+ consent) filters are applied INSIDE the
+ * retrieval SQL, never post-hoc. hybridRetrieve THROWS without scope filters.
  */
 
 export type { ChunkMetadata, RetrievalResult } from "./types.js";
-export { retrieve, hybridRetrieve } from "./retrieval.js";
-export { ingestDocument } from "./ingest.js";
+export { retrieve, hybridRetrieve, TrustWallFilterError } from "./retrieval.js";
+export type { RetrievalQuery } from "./retrieval.js";
+export { ingestDocument, chunkDocument } from "./ingest.js";
+export type { IngestRequest, Chunk } from "./ingest.js";

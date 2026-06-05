@@ -13,6 +13,7 @@
  */
 
 import { createQueues, QUEUE_NAMES, getRedisConnection } from "./queues.js";
+import { runBootChecks, BootCheckError } from "./boot-checks.js";
 import { createEchoWorker }       from "./handlers/echo.handler.js";
 import { createIngestWorker }     from "./handlers/ingest.handler.js";
 import { createFrontierWorker }   from "./handlers/ai-frontier.handler.js";
@@ -21,6 +22,17 @@ import { createEmbedWorker }      from "./handlers/embed.handler.js";
 import { createNotifyWorker }     from "./handlers/notify.handler.js";
 import { createResearchWorker }   from "./handlers/research.handler.js";
 import { createComplianceWorker } from "./handlers/compliance.handler.js";
+
+// [R9] Fail-fast boot guards (malware scanning must be configured in production).
+try {
+  runBootChecks();
+} catch (err) {
+  if (err instanceof BootCheckError) {
+    console.error(`[worker] CRITICAL boot check failed: ${err.message}`);
+    process.exit(1);
+  }
+  throw err;
+}
 
 console.log("[worker] Starting Trajct worker process...");
 

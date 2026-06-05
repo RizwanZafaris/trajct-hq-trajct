@@ -15,7 +15,7 @@
  * Reconcile against Postgres usage_events hourly (cron job — F-076).
  */
 
-import type IORedis from "ioredis";
+import type { Redis } from "ioredis";
 
 export class CapRedisUnavailableError extends Error {
   constructor() {
@@ -101,7 +101,7 @@ const GLOBAL_KEY = "cap:global";
  * @throws CapExceededError — cap would be exceeded
  */
 export async function atomicCapReserve(
-  redis: IORedis,
+  redis: Redis,
   accountId: string,
   projectedCostCents: number,
   reservationId: string,
@@ -136,7 +136,7 @@ export async function atomicCapReserve(
 
 /** Commit actual spend after successful work. Logs on failure but doesn't throw. */
 export async function commitCapSpend(
-  redis: IORedis,
+  redis: Redis,
   accountId: string,
   actualCostCents: number,
   reservationId: string
@@ -153,7 +153,7 @@ export async function commitCapSpend(
 
 /** Release reservation without committing (on error / no-charge cases). */
 export async function releaseCapReservation(
-  redis: IORedis,
+  redis: Redis,
   accountId: string,
   reservationId: string
 ): Promise<void> {
@@ -169,7 +169,7 @@ export async function releaseCapReservation(
 
 /** Get remaining headroom for an account. Returns Infinity if Redis unavailable (fail-open — for display only). */
 export async function getCapHeadroom(
-  redis: IORedis,
+  redis: Redis,
   accountId: string,
   ceilingCents: number
 ): Promise<{ account: number; global: number }> {
@@ -185,6 +185,6 @@ export async function getCapHeadroom(
 }
 
 /** Reset cap for a new billing cycle (called by cron or billing webhook). */
-export async function resetCapCycle(redis: IORedis, accountId: string): Promise<void> {
+export async function resetCapCycle(redis: Redis, accountId: string): Promise<void> {
   await redis.hdel(accountKey(accountId), "committed", "reserved");
 }

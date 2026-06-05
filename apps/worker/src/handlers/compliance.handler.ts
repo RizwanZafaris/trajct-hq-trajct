@@ -15,6 +15,7 @@
 
 import { Worker, type Job } from "bullmq";
 import { QUEUE_NAMES, getRedisConnection } from "../queues.js";
+import { writeDecisionLog, exportUserData, deleteUserData } from "@trajct/core/compliance";
 
 export interface DecisionLogJobData {
   type: "compliance.log_decision";
@@ -84,29 +85,43 @@ export function createComplianceWorker(): Worker<ComplianceJobData> {
 
 async function handleDecisionLog(data: DecisionLogJobData): Promise<{ logId: string }> {
   console.log(`[compliance:log] Decision type=${data.decisionType} consent=${data.consentRef}`);
-  // TODO Sprint 1 (wire with F-001 diagnostic and F-002 tailor):
-  // 1. Compute hash_chain = SHA-256(prev_hash || JSON.stringify(entry))
-  // 2. INSERT INTO audit_log (action='screening.evaluate', payload={...data}, hash_chain)
-  // 3. Only AFTER successful insert → signal that resultRef can be served
-  // 4. If insert fails → throw (job retried, result remains blocked)
-  throw new Error("F-080 compliance log not implemented — Sprint 1");
+  // Fail-closed (F-080): writeDecisionLog throws on missing consent or DB failure.
+  // The job retries; the result remains blocked until the log lands.
+  const result = await writeDecisionLog({
+    decisionType: data.decisionType,
+    accountId: data.accountId,
+    candidateAnonymizedId: data.candidateAnonymizedId,
+    orgId: data.orgId,
+    ...(data.jobId ? { jobId: data.jobId } : {}),
+    inputsHash: data.inputsHash,
+    idempotencyKey: data.idempotencyKey,   // [R3] dedup key (distinct from inputs_hash)
+    modelVersion: data.modelVersion,
+    promptVersion: data.promptVersion,
+    rationale: data.rationale,
+    consentRef: data.consentRef,
+    region: data.region,
+  });
+  console.log(`[compliance:log] logged ${result.logId} (chain=${result.hashChain.slice(0, 12)})`);
+  return { logId: result.logId };
 }
 
 async function handleDsarExport(data: DsarExportJobData): Promise<void> {
   console.log(`[compliance:export] DSAR export for user ${data.userId}`);
-  // TODO: Collect all user data from Postgres, vectors, R2 → generate export bundle
-  // Upload to R2 (exports bucket, short-TTL presigned URL) → email link to user
-  throw new Error("F-082 DSAR export not implemented");
+  // Identity verification happens at the API layer (F-082.5); the worker trusts the gate.
+  const result = await exportUserData({ userId: data.userId, verificationToken: "verified-upstream", requestId: data.requestId });
+  console.log(`[compliance:export] export ${result.status} for request ${data.requestId}`);
+  // R2 upload + email delivery of the bundle is a Platform-sprint step (result.status='pending').
 }
 
 async function handleDsarDelete(data: DsarDeleteJobData): Promise<{ residualPiiCount: number }> {
   console.log(`[compliance:delete] DSAR delete for user ${data.userId}`);
-  // TODO: orchestrated deletion:
-  // 1. Postgres: cascade-delete user rows; anonymize outcome data (FR-082.3)
-  // 2. vectors.embeddings: DELETE WHERE owner_id = userId
-  // 3. Redis: clear session + cap counter keys
-  // 4. R2: delete resume files, generated PDFs
-  // 5. Scan for residual PII → residualPiiCount MUST = 0 (TC-082.6)
-  // 6. Email deletion confirmation to user
-  throw new Error("F-082 DSAR delete not implemented");
+  // Postgres: anonymize outcomes FIRST (FR-082.3), then erase private rows, then residual scan.
+  const result = await deleteUserData({ userId: data.userId, verificationToken: "verified-upstream", requestId: data.requestId });
+  console.log(`[compliance:delete] residualPii=${result.residualPiiCount} anonymizedOutcomes=${result.anonymizedOutcomeCount}`);
+  if ((result.residualPiiCount ?? 1) > 0) {
+    // Fail-closed: residual PII is a deletion failure (TC-082.6) → job retries / alerts.
+    throw new Error(`DSAR delete incomplete: ${result.residualPiiCount} residual PII rows`);
+  }
+  // TODO (Platform sprint): vectors.embeddings + Redis + R2 sweep, deletion-confirmation email.
+  return { residualPiiCount: result.residualPiiCount ?? 0 };
 }

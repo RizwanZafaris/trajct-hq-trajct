@@ -15,8 +15,15 @@
  * No charge for failed work (FR-073.4).
  */
 
-import { Worker, type Job } from "bullmq";
+import { Worker, Queue, type Job } from "bullmq";
+import postgres from "postgres";
 import { QUEUE_NAMES, getRedisConnection } from "../queues.js";
+
+let _jsql: ReturnType<typeof postgres> | null = null;
+function jsql(): ReturnType<typeof postgres> {
+  if (!_jsql) _jsql = postgres(process.env["DATABASE_URL"] ?? "postgresql://trajct:trajct_dev_password@localhost:5434/trajct_dev", { max: 2 });
+  return _jsql;
+}
 
 export interface DiagnosticScoreJobData {
   type: "diagnostic.score";
@@ -68,12 +75,21 @@ export interface MatchingRunJobData {
   idempotencyKey: string;
 }
 
+export interface JourneyOrchestrateJobData {
+  type: "journey.orchestrate";
+  journeyId: string;
+  userId: string;
+  jobId: string;
+  idempotencyKey: string;
+}
+
 export type FrontierJobData =
   | DiagnosticScoreJobData
   | TailorJobData
   | PrepGenerateJobData
   | JdGenerateJobData
-  | MatchingRunJobData;
+  | MatchingRunJobData
+  | JourneyOrchestrateJobData;
 
 export function createFrontierWorker(): Worker<FrontierJobData> {
   const connection = getRedisConnection();
@@ -90,6 +106,7 @@ export function createFrontierWorker(): Worker<FrontierJobData> {
         case "prep.generate":      return handlePrepGenerate(job.data);
         case "jd.generate":        return handleJdGenerate(job.data);
         case "matching.run":       return handleMatchingRun(job.data);
+        case "journey.orchestrate": return handleJourneyOrchestrate(job.data);
         default:
           throw new Error(`Unknown frontier job type`);
       }
@@ -147,4 +164,46 @@ async function handleMatchingRun(data: MatchingRunJobData): Promise<void> {
   // Stage 4: LLM writes rationale ONLY (not the score)
   // Trust wall: only CandidatePublicProjection fields in matching_results
   throw new Error("Not implemented — V1");
+}
+
+// --- F-056 journey saga orchestration -------------------------------------
+
+async function handleJourneyOrchestrate(data: JourneyOrchestrateJobData): Promise<void> {
+  console.log(`[frontier:journey] Orchestrate ${data.journeyId} for ${data.userId}/${data.jobId}`);
+  const connection = getRedisConnection();
+
+  // Saga steps — each is an independent, idempotent child job (deduped by jobId).
+  const frontier = new Queue(QUEUE_NAMES.AI_FRONTIER, { connection });
+  const research = new Queue(QUEUE_NAMES.RESEARCH, { connection });
+  const childIds: string[] = [];
+
+  // Step 1: tailored résumé (G2 equivalent)
+  const tailorId = `journey-${data.journeyId}-tailor`;
+  await frontier.add("resume.tailor", {
+    type: "resume.tailor", tailoredResumeId: tailorId, resumeId: "", companyId: data.jobId,
+    targetRole: "", userId: data.userId, ledgerEntryId: "", idempotencyKey: tailorId,
+  }, { jobId: tailorId });
+  childIds.push(tailorId);
+
+  // Step 2: interview prep (G3 equivalent)
+  const prepId = `journey-${data.journeyId}-prep`;
+  await frontier.add("prep.generate", {
+    type: "prep.generate", prepSessionId: prepId, companyId: data.jobId,
+    prepType: "standard", userId: data.userId, idempotencyKey: prepId,
+  }, { jobId: prepId });
+  childIds.push(prepId);
+
+  // Step 3: people / job discovery (people-finder equivalent)
+  const discoverId = `journey-${data.journeyId}-discover`;
+  await research.add("jobs.discover", {
+    type: "jobs.discover", adapters: ["fetch"], keywords: [], locations: [], idempotencyKey: discoverId,
+  }, { jobId: discoverId });
+  childIds.push(discoverId);
+
+  // Mark the journey running with its child job ids.
+  await jsql()`
+    UPDATE journeys SET status = 'running', child_job_ids = ${jsql().array(childIds)}, updated_at = NOW()
+    WHERE id = ${data.journeyId}
+  `;
+  console.log(`[frontier:journey] ${data.journeyId} running with ${childIds.length} child jobs`);
 }

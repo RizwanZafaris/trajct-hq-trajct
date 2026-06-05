@@ -13,8 +13,8 @@
  * If the flag is off, they throw ScreeningRegionDisabledError — not silently skip.
  */
 
-export type { ScreeningRequest, ScreeningResult, ScreeningRegionDisabledError } from "./screening";
-export { evaluateScreening } from "./screening";
+export type { ScreeningRequest, ScreeningResult } from "./screening.js";
+export { evaluateScreening, ScreeningRegionDisabledError, ScreeningGatedError } from "./screening.js";
 
-export type { ConsentRecord } from "./consent";
-export { captureConsent, verifyConsent } from "./consent";
+export type { ConsentRecord } from "./consent.js";
+export { captureConsent, verifyConsent } from "./consent.js";
