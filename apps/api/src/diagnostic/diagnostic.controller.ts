@@ -1,106 +1,69 @@
 import {
-  Controller, Post, Get, Param, HttpCode, HttpStatus, Req, Res,
-  BadRequestException, UseGuards,
+  Controller, Post, Get, Param, HttpCode, HttpStatus, Req, BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import type { FastifyRequest, FastifyReply } from "fastify";
-import { DiagnosticService } from "./diagnostic.service.js";
-import { RbacGuard } from "../common/guards/rbac.guard.js";
-import type { DiagnosticUploadResponse, DiagnosticResult, DiagnosticError } from "@trajct/contracts";
+import type { FastifyRequest } from "fastify";
+import { DiagnosticService, type DiagnoseInput } from "./diagnostic.service.js";
+import {
+  DiagnoseRequestSchema, type DiagnoseSubmitResponse, type DiagnosePollResponse, type DiagnosticError,
+} from "@trajct/contracts";
 
+/**
+ * F-001 — Honest diagnostic endpoints. No auth required (FR-001.5).
+ * Rate limit: 10/h (BR-001.8). The 30/h authed tier is a follow-up custom throttler key.
+ */
 @Controller("diagnostic")
-@UseGuards(RbacGuard)
 export class DiagnosticController {
   constructor(private readonly diagnostic: DiagnosticService) {}
 
-  /**
-   * POST /v1/diagnostic/upload
-   * Accepts multipart/form-data: file (resume) + fields (targetUrl|targetJdText, idempotencyKey)
-   * Rate limit: 10/hr IP unauthenticated, 30/hr authenticated (FR-001.9)
-   * No auth required (FR-001.5)
-   */
-  @Post("upload")
+  /** POST /v1/diagnostic — submit a résumé (multipart file OR JSON paste) + a target. */
+  @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 10, ttl: 3600000 } })
-  async upload(
-    @Req() req: FastifyRequest & { userId?: string },
-    @Res({ passthrough: true }) _res: FastifyReply
-  ): Promise<DiagnosticUploadResponse> {
-    // Parse multipart fields + file
-    const data = await req.file();
-    if (!data) {
-      throw new BadRequestException({
-        code: "PARSE_FAILED",
-        message: "No file uploaded. Send multipart/form-data with a 'file' field.",
-        retryable: false,
-      } satisfies DiagnosticError);
+  async submit(@Req() req: FastifyRequest & { userId?: string; body?: unknown }): Promise<DiagnoseSubmitResponse> {
+    const userId = req.userId ?? null;
+    const contentType = req.headers["content-type"] ?? "";
+
+    let input: DiagnoseInput;
+
+    if (contentType.includes("multipart/form-data")) {
+      const data = await (req as unknown as { file: () => Promise<{ toBuffer: () => Promise<Buffer>; filename: string; mimetype: string; fields: Record<string, { value: string }> } | undefined> }).file();
+      if (!data) throw this.err("MISSING_INPUT", "Add your résumé and a target role.");
+      const buffer = await data.toBuffer();
+      const fields = data.fields ?? {};
+      const target = (fields["target"]?.value ?? "").toString();
+      input = {
+        resumeBuffer: buffer,
+        resumeFileName: data.filename,
+        resumeMime: data.mimetype,
+        target,
+        ...(fields["context"]?.value ? { context: fields["context"].value } : {}),
+        ...(fields["locale"]?.value ? { locale: fields["locale"].value } : {}),
+      };
+    } else {
+      const parsed = DiagnoseRequestSchema.parse(req.body);
+      input = {
+        ...(parsed.resume_text ? { resumeText: parsed.resume_text } : {}),
+        target: parsed.target,
+        ...(parsed.context ? { context: parsed.context } : {}),
+        ...(parsed.locale ? { locale: parsed.locale } : {}),
+      };
     }
 
-    const fileBuffer = await data.toBuffer();
-    const fileName   = data.filename;
-    const mimeType   = data.mimetype;
-
-    // Additional fields from the multipart body
-    const fields = data.fields as Record<string, { value: string }>;
-    const targetUrl      = (fields["targetUrl"]?.value as string | undefined)      ?? "";
-    const targetJdText   = (fields["targetJdText"]?.value as string | undefined)   ?? "";
-    const idempotencyKey = (fields["idempotencyKey"]?.value as string | undefined) ?? `anon:${Date.now()}`;
-
-    return this.diagnostic.processUpload(
-      fileBuffer, fileName, mimeType,
-      { url: targetUrl || undefined, text: targetJdText || undefined },
-      req.userId ?? null,
-      idempotencyKey
-    );
+    return this.diagnostic.diagnose(input, userId);
   }
 
-  /**
-   * POST /v1/diagnostic/upload/text
-   * Alternative: paste resume + JD text directly (no file upload needed)
-   */
-  @Post("upload/text")
-  @HttpCode(HttpStatus.ACCEPTED)
-  @Throttle({ default: { limit: 10, ttl: 3600000 } })
-  async uploadText(
-    @Req() req: FastifyRequest & { userId?: string; body?: {
-      resumeText: string;
-      targetUrl?: string;
-      targetJdText?: string;
-      idempotencyKey?: string;
-    } }
-  ): Promise<DiagnosticUploadResponse> {
-    const body = req.body;
-    const resumeText = body?.resumeText ?? "";
-
-    if (!resumeText.trim()) {
-      throw new BadRequestException({
-        code: "RESUME_TOO_SHORT",
-        message: "Please paste your resume text.",
-        retryable: false,
-      } satisfies DiagnosticError);
-    }
-
-    // Convert text to buffer (treated as plain text)
-    const fileBuffer = Buffer.from(resumeText, "utf-8");
-    const idempotencyKey = body?.idempotencyKey ?? `text:${Date.now()}`;
-
-    return this.diagnostic.processUpload(
-      fileBuffer, "paste.txt", "text/plain",
-      { url: body?.targetUrl, text: body?.targetJdText },
-      req.userId ?? null,
-      idempotencyKey
-    );
-  }
-
-  /**
-   * GET /v1/diagnostic/:diagnosticId — poll result
-   */
-  @Get(":diagnosticId")
+  /** GET /v1/diagnostic/:diagToken — poll the diagnosis. */
+  @Get(":diagToken")
   @HttpCode(HttpStatus.OK)
-  async getResult(
-    @Param("diagnosticId") diagnosticId: string,
+  async poll(
+    @Param("diagToken") diagToken: string,
     @Req() req: FastifyRequest & { userId?: string }
-  ): Promise<DiagnosticResult> {
-    return this.diagnostic.getResult(diagnosticId, req.userId ?? null);
+  ): Promise<DiagnosePollResponse> {
+    return this.diagnostic.getResult(diagToken, req.userId ?? null);
+  }
+
+  private err(code: DiagnosticError["code"], message: string): BadRequestException {
+    return new BadRequestException({ code, message, retryable: false } as DiagnosticError);
   }
 }

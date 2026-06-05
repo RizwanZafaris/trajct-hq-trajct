@@ -23,8 +23,8 @@ import {
   ChangeMemberRoleRequestSchema, ChangeMemberRoleResponseSchema,
 } from "./org.js";
 import {
-  DiagnosticUploadRequestSchema, DiagnosticUploadResponseSchema, DiagnosticResultSchema,
-  DiagnosticErrorCodeSchema,
+  DiagnoseRequestSchema, DiagnoseSubmitResponseSchema, DiagnosePollResponseSchema,
+  DiagnosticResultSchema, DiagnosticErrorCodeSchema,
 } from "./diagnostic.js";
 import { AuthErrorCodeSchema, BillingErrorCodeSchema, GeneralErrorCodeSchema } from "./errors.js";
 
@@ -121,9 +121,9 @@ const openapi = {
         tags: ["diagnostic"],
         summary: "Upload resume for F-001 diagnostic",
         security: [{ sessionAuth: [] }],
-        requestBody: { required: true, content: { "multipart/form-data": { schema: schemaRef("DiagnosticUploadRequest") } } },
+        requestBody: { required: true, content: { "multipart/form-data": { schema: schemaRef("DiagnoseRequest") } } },
         responses: {
-          "202": { description: "Accepted — job queued", content: { "application/json": { schema: schemaRef("DiagnosticUploadResponse") } } },
+          "202": { description: "Accepted — scoring queued", content: { "application/json": { schema: schemaRef("DiagnoseSubmitResponse") } } },
           "413": { description: "File too large", content: { "application/json": { schema: schemaRef("DiagnosticError") } } },
           "415": { description: "Unsupported format", content: { "application/json": { schema: schemaRef("DiagnosticError") } } },
           "429": { description: "Rate limited", content: { "application/json": { schema: schemaRef("DiagnosticError") } } },
@@ -138,7 +138,7 @@ const openapi = {
         security: [{ sessionAuth: [] }],
         parameters: [{ name: "diagnosticId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
-          "200": { description: "Result", content: { "application/json": { schema: schemaRef("DiagnosticResult") } } },
+          "200": { description: "Poll result", content: { "application/json": { schema: schemaRef("DiagnosePollResponse") } } },
           "404": { description: "Not found", content: { "application/json": { schema: schemaRef("GeneralError") } } },
         },
       },
@@ -175,8 +175,9 @@ const openapi = {
       InviteMemberResponse: zodToJsonSchema(InviteMemberResponseSchema, { $refStrategy: "none" }),
       ChangeMemberRoleRequest: zodToJsonSchema(ChangeMemberRoleRequestSchema, { $refStrategy: "none" }),
       ChangeMemberRoleResponse: zodToJsonSchema(ChangeMemberRoleResponseSchema, { $refStrategy: "none" }),
-      DiagnosticUploadRequest: zodToJsonSchema(DiagnosticUploadRequestSchema, { $refStrategy: "none" }),
-      DiagnosticUploadResponse: zodToJsonSchema(DiagnosticUploadResponseSchema, { $refStrategy: "none" }),
+      DiagnoseRequest: zodToJsonSchema(DiagnoseRequestSchema, { $refStrategy: "none" }),
+      DiagnoseSubmitResponse: zodToJsonSchema(DiagnoseSubmitResponseSchema, { $refStrategy: "none" }),
+      DiagnosePollResponse: zodToJsonSchema(DiagnosePollResponseSchema, { $refStrategy: "none" }),
       DiagnosticResult: zodToJsonSchema(DiagnosticResultSchema, { $refStrategy: "none" }),
       DiagnosticError: zodToJsonSchema(DiagnosticErrorCodeSchema, { $refStrategy: "none" }),
       AuthError: zodToJsonSchema(AuthErrorCodeSchema, { $refStrategy: "none" }),

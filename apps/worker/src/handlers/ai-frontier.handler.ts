@@ -18,6 +18,7 @@
 import { Worker, Queue, type Job } from "bullmq";
 import postgres from "postgres";
 import { QUEUE_NAMES, getRedisConnection } from "../queues.js";
+import { runDiagnosticScore } from "./diagnostic-score.js";
 
 let _jsql: ReturnType<typeof postgres> | null = null;
 function jsql(): ReturnType<typeof postgres> {
@@ -27,12 +28,12 @@ function jsql(): ReturnType<typeof postgres> {
 
 export interface DiagnosticScoreJobData {
   type: "diagnostic.score";
-  diagnosticId: string;
-  resumeId: string;
-  targetJdText: string;
-  companyId?: string;
-  userId?: string;
-  contextSignal?: string;
+  diagToken: string;
+  resumeText: string;
+  jdText: string;
+  jdConfidence: "high" | "med" | "low";
+  context: string | null;
+  userId: string | null;
   idempotencyKey: string;
 }
 
@@ -116,15 +117,7 @@ export function createFrontierWorker(): Worker<FrontierJobData> {
 }
 
 async function handleDiagnosticScore(data: DiagnosticScoreJobData): Promise<void> {
-  console.log(`[frontier:diagnostic] Score diagnostic ${data.diagnosticId}`);
-  // TODO Sprint 1 (W5-7):
-  // 1. Gateway.complete({ task: 'diagnostic.score', tier: 'mid', ... }) — Mid not Frontier
-  //    (8s p95 budget requires a fast model; rubric structure compensates)
-  // 2. Parse response → overall_score, band, reasons with evidence_refs
-  // 3. Attach cite-markers (F-050)
-  // 4. UPDATE diagnostic_results SET overall_score, band, reasons, status='completed'
-  // 5. Enqueue q.notify: { type: 'notify.diagnostic_ready', userId, diagnosticId }
-  throw new Error("Not implemented — Sprint 1");
+  await runDiagnosticScore(data);
 }
 
 async function handleTailor(data: TailorJobData): Promise<void> {

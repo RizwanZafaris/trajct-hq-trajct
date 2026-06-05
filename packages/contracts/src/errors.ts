@@ -25,6 +25,7 @@ export type BaseError = z.infer<typeof BaseErrorSchema>;
 // ---------------------------------------------------------------------------
 export const DiagnosticErrorCodeSchema = z.discriminatedUnion("code", [
   z.object({ code: z.literal("FILE_TOO_LARGE"),           message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("MISSING_INPUT"),            message: z.string(), retryable: z.literal(false) }),
   z.object({ code: z.literal("UNSUPPORTED_FORMAT"),       message: z.string(), retryable: z.literal(false) }),
   z.object({ code: z.literal("NOT_A_RESUME"),             message: z.string(), retryable: z.literal(false) }),
   z.object({ code: z.literal("PARSE_FAILED"),             message: z.string(), retryable: z.literal(true) }),
