@@ -14,6 +14,7 @@ export * from "./diagnostic.js";
 // Candidate
 export * from "./candidate/resume.js";
 export * from "./candidate/profile.js";
+export * from "./candidate/resume-edit.js";
 export * from "./candidate/prep.js";
 export * from "./candidate/tracker.js";
 export * from "./candidate/monitoring.js";

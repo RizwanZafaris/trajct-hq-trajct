@@ -52,6 +52,20 @@ export const ProfileErrorCodeSchema = z.discriminatedUnion("code", [
 export type ProfileErrorCode = z.infer<typeof ProfileErrorCodeSchema>;
 
 // ---------------------------------------------------------------------------
+// F-004 Chat-driven résumé editing errors (FRD §4.4.7)
+// ---------------------------------------------------------------------------
+export const EditErrorCodeSchema = z.discriminatedUnion("code", [
+  z.object({ code: z.literal("INSTRUCTION_TOO_LONG"),  message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("INSTRUCTION_UNCLEAR"),   message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("EDIT_CONFLICT"),         message: z.string(), retryable: z.literal(true) }),   // re-base then retry
+  z.object({ code: z.literal("FABRICATION_REFUSED"),   message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("COST_CEILING_HIT"),      message: z.string(), retryable: z.literal(false) }),
+  z.object({ code: z.literal("RATE_LIMITED"),          message: z.string(), retryable: z.literal(true),  retryAfterSeconds: z.number() }),
+  z.object({ code: z.literal("ENGINE_UNAVAILABLE"),    message: z.string(), retryable: z.literal(true) }),
+]);
+export type EditErrorCode = z.infer<typeof EditErrorCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // Auth errors
 // ---------------------------------------------------------------------------
 export const AuthErrorCodeSchema = z.discriminatedUnion("code", [
